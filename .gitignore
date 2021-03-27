@@ -1,0 +1,6 @@
+*.png
+*.jpg
+videos
+.DS_Store
+__pycache__/
+poetry.lock
