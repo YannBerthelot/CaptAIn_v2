@@ -1,14 +1,26 @@
+import os
 import gym
+import pandas as pd
 from gym import spaces
 import numpy as np
 from environment import FlightModel
 from converter import converter
-
+import matplotlib.pyplot as plt
 import pyglet
 
 TAKE_OFF_ALTITUDE = converter(80, "feet", "m")  # 80 feets
-MAX_TIMESTEP = 200
 RUNWAY_LENGTH = 5000  # 5000m
+
+from configparser import ConfigParser
+
+
+parser = ConfigParser()
+thisfolder = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(thisfolder, "config.ini")
+parser.read(config_path)
+
+DELTA_T = eval(parser.get("flight_model", "Timestep_size"))
+MAX_TIMESTEP = 200 / DELTA_T
 
 
 class PlaneEnv(gym.Env):
@@ -39,6 +51,7 @@ class PlaneEnv(gym.Env):
         self.viewer = None
         self.label = False
         self.sum_rewards = 0
+        os.makedirs("trajectories", exist_ok=True)
 
     def terminal(self):
 
@@ -48,7 +61,12 @@ class PlaneEnv(gym.Env):
             self.overrun = self.FlightModel.Pos[0] > RUNWAY_LENGTH
             if self.take_off:
                 self.reason_terminal = "Take-off"
-                print("Champagne", self.FlightModel.Pos[0])
+                print(
+                    "Champagne",
+                    np.round(self.FlightModel.Pos[0], 0),
+                    np.round(self.FlightModel.V[0]),
+                    1,
+                )
             elif self.overtime:
                 self.reason_terminal = "Overtime"
             elif self.overrun:
@@ -75,6 +93,62 @@ class PlaneEnv(gym.Env):
                 print(
                     f"Episode {self.episode}, State : {[np.round(x,2) for x in obs]}, Sum of rewards {np.round(self.sum_rewards,0)}, Episode length {self.FlightModel.timestep}, Result {self.reason_terminal}"
                 )
+                fig, ax = plt.subplots()
+                plt.plot(self.FlightModel.Pos_vec[0], self.FlightModel.Pos_vec[1])
+                plt.title("Trajectory")
+                plt.savefig(f"trajectories/trajectory_{self.episode}.png")
+                plt.close("all")
+
+                fig, ax = plt.subplots()
+                pd.Series(self.FlightModel.V_vec[0]).plot(ax=ax, label="Vx")
+                pd.Series(self.FlightModel.V_vec[1]).plot(ax=ax, label="Vz")
+                plt.legend()
+                plt.title("Speeds over time")
+                plt.savefig(f"trajectories/speeds_{self.episode}.png")
+
+                fig, ax = plt.subplots()
+                pd.Series(self.FlightModel.thrust_vec).plot(ax=ax, label="Thrust")
+                pd.Series(self.FlightModel.theta_vec_act).plot(ax=ax, label="Theta")
+                plt.legend()
+                plt.title("Thrust and Pitch over time")
+                plt.savefig(f"trajectories/tp_{self.episode}.png")
+
+                fig, ax = plt.subplots()
+                pd.Series(self.FlightModel.drag_vec[0]).plot(ax=ax, label="X")
+                pd.Series(self.FlightModel.drag_vec[1]).plot(ax=ax, label="Y")
+                plt.legend()
+                plt.title("Drag over time")
+                plt.savefig(f"trajectories/drag_{self.episode}.png")
+
+                fig, ax = plt.subplots()
+                pd.Series(self.FlightModel.S_vec[0]).plot(ax=ax, label="X")
+                pd.Series(self.FlightModel.S_vec[1]).plot(ax=ax, label="Y")
+                plt.legend()
+                plt.title("S over time")
+                plt.savefig(f"trajectories/S_{self.episode}.png")
+
+                fig, ax = plt.subplots()
+                pd.Series(self.FlightModel.C_vec[0]).plot(ax=ax, label="X")
+                pd.Series(self.FlightModel.C_vec[1]).plot(ax=ax, label="Y")
+                plt.legend()
+                plt.title("C over time")
+                plt.savefig(f"trajectories/C_{self.episode}.png")
+
+                fig, ax = plt.subplots()
+                pd.Series(self.FlightModel.lift_vec[0]).plot(ax=ax, label="X")
+                pd.Series(self.FlightModel.lift_vec[1]).plot(ax=ax, label="Y")
+                plt.legend()
+                plt.title("lift over time")
+                plt.savefig(f"trajectories/lift_{self.episode}.png")
+                fig, ax = plt.subplots(3, 1, sharex="all")
+                pd.Series(self.FlightModel.alpha_vec).plot(ax=ax[0], title="Alpha")
+                pd.Series(self.FlightModel.gamma_vec).plot(ax=ax[1], title="Gamma")
+                # print(len(pd.Series(self.FlightModel.theta_vec)))
+                # print(pd.Series(self.FlightModel.theta_vec))
+                pd.Series(self.FlightModel.theta_vec).plot(ax=ax[2], title="Theta")
+                plt.tight_layout()
+                plt.savefig(f"trajectories/angles_{self.episode}.png")
+
             self.episode += 1
         return np.array(obs), reward, done, {}
 
@@ -83,6 +157,9 @@ class PlaneEnv(gym.Env):
         self.overtime = False
         self.overrun = False
         self.FlightModel.init_state()
+        # print(self.FlightModel.theta_vec)
+        self.FlightModel.init_logs()
+        # print(self.FlightModel.theta_vec)
         self.sum_rewards = 0
         return np.array(self.FlightModel.obs)
 

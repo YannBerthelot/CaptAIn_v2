@@ -7,19 +7,34 @@ import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from stable_baselines3.ppo import MlpPolicy
 from stable_baselines3.common.env_util import make_vec_env
+from utils import timing
+from configparser import ConfigParser
 
+
+parser = ConfigParser()
+thisfolder = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(thisfolder, "config.ini")
+parser.read(config_path)
+
+DELTA_T = eval(parser.get("flight_model", "Timestep_size"))
 wrappable_env = PlaneEnv(task="take-off")
 os.makedirs("videos", exist_ok=True)
 # from stable_baselines3.common.env_checker import check_env
 
 # check_env(env)
-vec_env = make_vec_env(lambda: wrappable_env, n_envs=16)
+vec_env = make_vec_env(lambda: wrappable_env, n_envs=1)
 model = PPO(
-    "MlpPolicy", vec_env, verbose=0, learning_rate=1e-4, clip_range=0.1, ent_coef=0.001
+    "MlpPolicy", vec_env, verbose=0, learning_rate=1e-3, clip_range=0.1, ent_coef=0.0001
 )
-n_episodes = 10000
-model.learn(n_episodes * 200)
+n_episodes = 100000
 
+
+@timing
+def learn(number_timesteps):
+    return model.learn(number_timesteps)
+
+
+model = learn(n_episodes * 200 / DELTA_T)
 env = Monitor(wrappable_env, "videos", force=True)
 obs = env.reset()
 thrust_log = []
