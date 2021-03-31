@@ -7,10 +7,11 @@ from environment import FlightModel
 from converter import converter
 import matplotlib.pyplot as plt
 import pyglet
+import shutil
+from numpy.linalg import norm
 
 TAKE_OFF_ALTITUDE = converter(80, "feet", "m")  # 80 feets
 RUNWAY_LENGTH = 5000  # 5000m
-
 from configparser import ConfigParser
 
 
@@ -20,6 +21,7 @@ config_path = os.path.join(thisfolder, "config.ini")
 parser.read(config_path)
 
 DELTA_T = eval(parser.get("flight_model", "Timestep_size"))
+LEVEL_TARGET = converter(eval(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 MAX_TIMESTEP = 200 / DELTA_T
 
 
@@ -36,7 +38,7 @@ class PlaneEnv(gym.Env):
 
         # Define action space
         self.action_space = spaces.Box(
-            np.array([0, 0]), np.array([1, +1])
+            np.array([-1, 0]), np.array([1, +1])
         )  # pitch, thrust
         # Define state space
         self.observation_space = spaces.Box(
@@ -51,6 +53,10 @@ class PlaneEnv(gym.Env):
         self.viewer = None
         self.label = False
         self.sum_rewards = 0
+        self.rewards = []
+        self.rewards_1 = []
+        self.rewards_2 = []
+        shutil.rmtree("trajectories")
         os.makedirs("trajectories", exist_ok=True)
 
     def terminal(self):
@@ -61,12 +67,12 @@ class PlaneEnv(gym.Env):
             self.overrun = self.FlightModel.Pos[0] > RUNWAY_LENGTH
             if self.take_off:
                 self.reason_terminal = "Take-off"
-                print(
-                    "Champagne",
-                    np.round(self.FlightModel.Pos[0], 0),
-                    np.round(self.FlightModel.V[0]),
-                    1,
-                )
+                # print(
+                #     "Champagne",
+                #     np.round(self.FlightModel.Pos[0], 0),
+                #     np.round(self.FlightModel.V[0]),
+                #     1,
+                # )
             elif self.overtime:
                 self.reason_terminal = "Overtime"
             elif self.overrun:
@@ -75,11 +81,42 @@ class PlaneEnv(gym.Env):
                 return True
             else:
                 return False
+        elif self.task == "level-flight":
+            self.overtime = self.FlightModel.timestep > MAX_TIMESTEP
+            self.overspeed = self.FlightModel.Mach > 0.98
+            self.over_g = norm(self.FlightModel.A) > (1.5 * 9.81)
+
+            if self.overtime:
+                self.reason_terminal = "Overtime"
+                return True
+            if self.overspeed:
+                self.reason_terminal = "Overspeed"
+                return True
+            if self.over_g:
+                self.reason_terminal = "Over G"
+                print(norm(self.FlightModel.A))
+                return True
+            else:
+                return False
 
     def compute_reward(self, obs):
-        reward = -(1 / (self.FlightModel.V[0] + 1)) + self.FlightModel.Pos[1]
-        if self.take_off:
-            reward = 20 - (self.FlightModel.Pos[0] / (RUNWAY_LENGTH / 10))
+        if self.task == "take-off":
+            # reward_1 = 30 / (np.power(self.FlightModel.V[0], 1.0 / 3.0) + 1)
+            reward_1 = self.FlightModel.Pos[0] / 1000
+            reward_2 = 1 / max(1, self.FlightModel.Pos[1])
+            reward = self.FlightModel.lift / 10000
+            reward = reward / 10
+            if self.take_off:
+                reward = 3000 - 2 * (self.FlightModel.Pos[0] / (RUNWAY_LENGTH / 10))
+        elif self.task == "level-flight":
+            reward = -abs(LEVEL_TARGET - self.FlightModel.Pos[1]) - norm(
+                self.FlightModel.A
+            )
+            if self.FlightModel.Mach > 0.95:
+                reward += -100
+            if self.over_g:
+                reward += -1000
+
         return reward
 
     def step(self, action):
@@ -87,9 +124,13 @@ class PlaneEnv(gym.Env):
         obs = self.FlightModel.action_to_next_state_continuous(action_dict)
         done = self.terminal()
         reward = self.compute_reward(obs)
-        self.sum_rewards += reward
+        self.rewards.append(reward)
+        # self.rewards_1.append(reward_1)
+        # self.rewards_2.append(reward_2)
         if done:
-            if self.episode % 100 == 0:
+            self.sum_rewards = np.sum(self.rewards)
+            if self.episode % 50 == 0:
+                print("TARGET", LEVEL_TARGET)
                 print(
                     f"Episode {self.episode}, State : {[np.round(x,2) for x in obs]}, Sum of rewards {np.round(self.sum_rewards,0)}, Episode length {self.FlightModel.timestep}, Result {self.reason_terminal}"
                 )
@@ -148,6 +189,16 @@ class PlaneEnv(gym.Env):
                 pd.Series(self.FlightModel.theta_vec).plot(ax=ax[2], title="Theta")
                 plt.tight_layout()
                 plt.savefig(f"trajectories/angles_{self.episode}.png")
+                plt.close("all")
+
+                fig, ax = plt.subplots()
+                pd.Series(self.rewards).plot(ax=ax, label="Full")
+                pd.Series(self.rewards_1).plot(ax=ax, label="1")
+                pd.Series(self.rewards_2).plot(ax=ax, label="2")
+                plt.legend()
+                plt.title("reward over time")
+                plt.savefig(f"trajectories/rewards_{self.episode}.png")
+                plt.close("all")
 
             self.episode += 1
         return np.array(obs), reward, done, {}
@@ -161,6 +212,9 @@ class PlaneEnv(gym.Env):
         self.FlightModel.init_logs()
         # print(self.FlightModel.theta_vec)
         self.sum_rewards = 0
+        self.rewards = []
+        self.rewards_1 = []
+        self.rewards_2 = []
         return np.array(self.FlightModel.obs)
 
     def render(self, mode="human"):
@@ -172,15 +226,17 @@ class PlaneEnv(gym.Env):
                 self.label.draw()
 
         screen_width = 1800
-        screen_height = 400
+        screen_height = 1000
 
-        world_width = 5000
+        world_width = 500
+        world_height = LEVEL_TARGET * 1.5
 
         scale = screen_width / world_width
+        scale_y = screen_height / world_height
         carty = 100  # TOP OF CART
 
-        cartwidth = 50.0
-        cartheight = 30.0
+        cartwidth = 100.0
+        cartheight = 20.0
 
         if self.viewer is None:
             from gym.envs.classic_control import rendering
@@ -202,6 +258,13 @@ class PlaneEnv(gym.Env):
             cart.add_attr(self.carttrans)
             self.viewer.add_geom(cart)
             self.track = rendering.Line((0, carty), (screen_width, carty))
+            self.track = rendering.Line(
+                (0, LEVEL_TARGET * scale_y + cartheight * 1.1 + (100 - cartheight)),
+                (
+                    screen_width,
+                    LEVEL_TARGET * scale_y + cartheight * 1.1 + (100 - cartheight),
+                ),
+            )
             self.track.set_color(0, 0, 0)
             self.viewer.add_geom(self.track)
             self.score_label = pyglet.text.Label(
@@ -215,8 +278,11 @@ class PlaneEnv(gym.Env):
             )
             self.transform = rendering.Transform()
 
-        x = self.FlightModel.Pos[0]
+        # x = self.FlightModel.Pos[0]
+        x = 250
+        y = self.FlightModel.Pos[1]
         cartx = x * scale + cartwidth * 1.1  # MIDDLE OF CART
+        carty = y * scale_y + cartheight * 1.1 + (100 - cartheight)  # MIDDLE OF CART
         self.carttrans.set_translation(cartx, carty)
         self.carttrans.set_rotation(self.FlightModel.theta)
 

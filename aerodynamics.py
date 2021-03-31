@@ -53,7 +53,7 @@ def compute_Cx(alpha, Mach):
     """
     alpha += np.radians(0)
     C_x = np.power(np.degrees(alpha) * 0.02, 2) + C_X_MIN
-    #print("Alpha", alpha, "Mac", Mach, "Cx", C_x)
+    # print("Alpha", alpha, "Mac", Mach, "Cx", C_x)
     return Mach_Cx(C_x, Mach)
 
 
@@ -61,11 +61,11 @@ def compute_Cz(alpha, Mach):
     """
     Compute the lift coefficient at M=0 depending on alpha (the higher the alpha, the higher the lift until stall)
     """
-    alpha = alpha  # + np.radians(5)
+    alpha = alpha + np.radians(5)
     # print("alpha", alpha)
     alpha_degrees = np.degrees(alpha)
     sign = np.sign(alpha_degrees)
-    #print('sign', sign)
+    # print('sign', sign)
 
     if abs(alpha_degrees) < 15:
         # Quadratic evolution  from C_z = 0 for 0 degrees and reaching a max value of C_z = 1.5 for 15 degrees
@@ -77,7 +77,7 @@ def compute_Cz(alpha, Mach):
         ##if alpha > 20 degrees : Stall => C_z = 0
         C_z = 0
     C_z = Mach_Cz(C_z, Mach)
-    #print("Alpha", alpha, "Mac", Mach, "Cz", C_z)
+    # print("Alpha", alpha, "Mac", Mach, "Cz", C_z)
     return C_z
 
 

@@ -39,6 +39,7 @@ S_FRONT = eval(parser.get("flight_model", "Surface_front"))
 g = 9.81
 TASK = parser.get("flight_model", "Task")
 CRITICAL_ENERGY = eval(parser.get("flight_model", "Critical_energy"))
+LEVEL_TARGET = converter(eval(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 
 
 class FlightModel:
@@ -140,14 +141,14 @@ class FlightModel:
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = 0
             self.m = self.init_mass
-
+            self.lift = 0
         elif self.task == "level-flight":
-            self.initial_altitude = 10000
+            self.initial_altitude = LEVEL_TARGET
             self.A = [(0), (0)]  # Acceleration vector
             self.V = [(245), (0)]  # Speed Vector
             self.Pos = [(0), (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
-            self.thrust = 0
+            self.thrust = self.THRUST_MAX * 0.7 * compute_altitude_factor(self.Pos[1])
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
         self.Mach = norm(self.V) / 343  # Mach number
 
@@ -219,8 +220,8 @@ class FlightModel:
         self.Mach = self.V[0] / 343
 
         self.Pos = compute_next_position(self.Pos[0], self.Pos[1], self.V[0], self.V[1])
-        # if self.V[0] > self.MAX_SPEED:
-        #     self.V[0] = self.MAX_SPEED
+        if self.V[0] > self.MAX_SPEED:
+            self.V[0] = self.MAX_SPEED
 
         # Update plot lists
         # self.A_vec[0].append(self.A[0])
@@ -289,7 +290,7 @@ class FlightModel:
         drag = compute_drag(S_x, norm_V, C_x, altitude_factor) * flaps_factor
 
         # Compute lift magnitude
-        lift = compute_drag(S_z, norm_V, C_z, altitude_factor) * flaps_factor
+        self.lift = compute_drag(S_z, norm_V, C_z, altitude_factor) * flaps_factor
 
         # Newton's second law
         # Z-Axis
@@ -297,7 +298,7 @@ class FlightModel:
         cos_theta = cos(theta)
         sin_theta = sin(theta)
 
-        lift_z = cos_theta * lift
+        lift_z = cos_theta * self.lift
         drag_z = -sin(gamma) * drag
         thrust_z = sin_theta * thrust
         # Compute the sum
@@ -305,7 +306,7 @@ class FlightModel:
         # print("Z lift", lift_z, "drag", drag_z, "thrust_z", thrust_z, "P", P)
         # X-Axis
         # Project on X-axis
-        lift_x = -sin_theta * lift
+        lift_x = -sin_theta * self.lift
         drag_x = -abs(cos(gamma) * drag)
         thrust_x = cos_theta * thrust
 
@@ -380,15 +381,13 @@ class FlightModel:
         for i in range(1):
             delta_thrust = np.clip(
                 thrust_modified - self.thrust,
-                -0.01 * self.THRUST_MAX,
-                0.01 * self.THRUST_MAX,
+                -0.1 * self.THRUST_MAX,
+                0.1 * self.THRUST_MAX,
             )
             # print("old theta", np.degrees(self.theta))
             self.thrust += delta_thrust
             # print("EAZAAZ", new_theta - self.theta)
-            delta_theta = np.clip(
-                new_theta - self.theta, np.radians(-0.01), np.radians(0.01)
-            )
+            delta_theta = np.clip(new_theta - self.theta, np.radians(-1), np.radians(1))
             # print("delta theta", np.degrees(delta_theta))
             self.theta += delta_theta
 
@@ -408,7 +407,6 @@ class FlightModel:
 
             self.get_obs()
             self.timestep += 1
-
         return self.obs
 
 
