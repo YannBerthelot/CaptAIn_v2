@@ -94,8 +94,8 @@ class PlaneEnv(gym.Env):
                 return True
             if self.over_g:
                 self.reason_terminal = "Over G"
-                print(norm(self.FlightModel.A))
-                return True
+                # print(norm(self.FlightModel.A))
+                return False
             else:
                 return False
 
@@ -109,10 +109,12 @@ class PlaneEnv(gym.Env):
             if self.take_off:
                 reward = 3000 - 2 * (self.FlightModel.Pos[0] / (RUNWAY_LENGTH / 10))
         elif self.task == "level-flight":
-            reward = -abs(LEVEL_TARGET - self.FlightModel.Pos[1]) - norm(
-                self.FlightModel.A
-            )
-            if self.FlightModel.Mach > 0.95:
+            reward = (
+                20
+                - abs(LEVEL_TARGET - self.FlightModel.Pos[1])
+                - norm(self.FlightModel.A)
+            )   
+            if self.FlightModel.Mach > 0.90:
                 reward += -100
             if self.over_g:
                 reward += -1000
@@ -129,8 +131,7 @@ class PlaneEnv(gym.Env):
         # self.rewards_2.append(reward_2)
         if done:
             self.sum_rewards = np.sum(self.rewards)
-            if self.episode % 50 == 0:
-                print("TARGET", LEVEL_TARGET)
+            if self.episode % 1000 == 0:
                 print(
                     f"Episode {self.episode}, State : {[np.round(x,2) for x in obs]}, Sum of rewards {np.round(self.sum_rewards,0)}, Episode length {self.FlightModel.timestep}, Result {self.reason_terminal}"
                 )
