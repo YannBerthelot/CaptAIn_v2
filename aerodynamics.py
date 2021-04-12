@@ -6,17 +6,7 @@ from functools import lru_cache
 import numpy as np
 from numpy import arcsin, cos, sin
 from numpy.linalg import norm
-from utils import timing
-
-
-# create and configure logger
-os.makedirs("logs", exist_ok=True)
-
-LOG_FORMAT = "%(levelno)s %(asctime)s %(filename)s %(funcName)s - %(message)s"
-logging.basicConfig(
-    filename="logs/aerodynamics.log", level=logging.DEBUG, format=LOG_FORMAT
-)
-logger = logging.getLogger()
+from utils import timing, setup_logger
 
 
 # create and configure parser
@@ -38,6 +28,21 @@ S_FRONT = eval(parser.get("flight_model", "Surface_front"))
 g = 9.81
 TASK = parser.get("flight_model", "Task")
 CRITICAL_ENERGY = eval(parser.get("flight_model", "Critical_energy"))
+DEBUG = eval(parser.get("debug", "debug"))
+
+# create and configure logger
+os.makedirs("logs", exist_ok=True)
+if DEBUG:
+    level = logging.DEBUG
+else:
+    level = logging.INFO
+LOG_FORMAT = "%(levelno)s %(asctime)s %(filename)s %(funcName)s - %(message)s"
+logger = setup_logger(
+    "aerodynamics_logger",
+    "logs/aerodynamics.log",
+    level=logging.DEBUG,
+    format=LOG_FORMAT,
+)
 
 
 def compute_alpha(theta, gamma):
@@ -45,7 +50,7 @@ def compute_alpha(theta, gamma):
     Compute alpha (the angle between the plane's axis and the speed vector).
     alpha = theta - gamma
     """
-    logger.debug("Compute Alpha")
+    logger.debug(f"theta {theta},gamma {gamma}")
     # print("theta", np.degrees(theta), "gamma", np.degrees(gamma))
     return theta - gamma
 
@@ -55,12 +60,23 @@ def compute_gamma(V_z, norm_V):
     Compute gamma (the angle between ground and the speed vector) using trigonometry.
     sin(gamma) = V_z / V -> gamma = arcsin(V_z/V)
     """
-    logger.debug(f"Compute Gamma norm_V : {norm_V}")
+    logger.debug(f"V_z : {V_z}, norm_V : {norm_V}")
+    if (norm_V >= 343) or (V_z >= 343):
+        err = ValueError(f"Supersonic speed {norm_V/343}")
+        logger.error(err)
+        raise err
+    if V_z > norm_V:
+        err = ValueError(f"V_z higher than V")
+        logger.error(err)
+        raise err
     if norm_V > 0:
-
         return arcsin(V_z / norm_V)
-    else:
+    elif norm_V == 0:
         return 0
+    else:
+        err = ValueError(f"Negative norm")
+        logger.error(err)
+        raise err
 
 
 def compute_Cx(alpha, Mach):
@@ -81,7 +97,7 @@ def compute_Cz(alpha, Mach):
     """
     Compute the lift coefficient at M=0 depending on alpha (the higher the alpha, the higher the lift until stall)
     """
-    logger.debug(f"Compute Cz  in : alpha {alpha}, Mach {Mach}")
+    logger.debug(f"alpha {alpha}, Mach {Mach}")
     alpha = alpha + np.radians(5)
     # print("alpha", alpha)
     alpha_degrees = np.degrees(alpha)
@@ -110,7 +126,7 @@ def Mach_Cx(Cx, Mach):
     """
     Compute the drag coefficient based on Mach Number and drag coefficient at M =0
     """
-    logger.debug(f"Compute MachCx  in : Cx {Cx}, Mach {Mach}")
+    logger.debug(f"Cx {Cx}, Mach {Mach}")
     if Mach < MACH_CRITIC:
         return Cx / np.sqrt(1 - (Mach ** 2))
     elif Mach < 1:
@@ -125,7 +141,7 @@ def Mach_Cz(Cz, Mach):
     """
     Compute the lift coefficient based on Mach Number and lift coefficient at M =0
     """
-    logger.debug(f"Compute MachCz  in : Cz {Cz}, Mach {Mach}")
+    logger.debug(f"Cz {Cz}, Mach {Mach}")
     M_d = MACH_CRITIC + (1 - MACH_CRITIC) / 4
     if Mach <= MACH_CRITIC:
         return Cz
@@ -229,6 +245,14 @@ def compute_next_position(position, altitude, V_x, V_z):
     position += V_x * DELTA_T
     altitude += V_z * DELTA_T
     return [position, altitude]
+
+
+def compute_next_speed(V_x, V_z, A_x, A_z):
+    logger.debug(f"V_x:{V_x},V_z:{V_z},A_x:{A_x},A_z:{A_z}")
+
+    V_x += A_x * DELTA_T
+    V_z += A_z * DELTA_T
+    return [V_x, V_z]
 
 
 if __name__ == "__main__":

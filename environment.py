@@ -1,4 +1,9 @@
 import os
+import logging
+import warnings
+from functools import lru_cache
+from configparser import ConfigParser
+
 import math
 from math import cos, sin, ceil, floor
 import numpy as np
@@ -16,12 +21,21 @@ from aerodynamics import (
     compute_altitude_factor,
     compute_alpha,
     compute_next_position,
+    compute_next_speed,
 )
+from utils import setup_logger
 
-from functools import lru_cache
-from configparser import ConfigParser
+# create and configure logger
+os.makedirs("logs", exist_ok=True)
 
-
+LOG_FORMAT = "%(levelno)s %(asctime)s %(filename)s %(funcName)s - %(message)s"
+logger = setup_logger(
+    "environment_logger",
+    "logs/environment.log",
+    level=logging.DEBUG,
+    format=LOG_FORMAT,
+)
+# create and configure parser
 parser = ConfigParser()
 thisfolder = os.path.dirname(os.path.abspath(__file__))
 config_path = os.path.join(thisfolder, "config.ini")
@@ -141,7 +155,6 @@ class FlightModel:
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = 0
             self.m = self.init_mass
-            self.lift = 0
         elif self.task == "level-flight":
             self.initial_altitude = LEVEL_TARGET
             self.A = [(0), (0)]  # Acceleration vector
@@ -150,9 +163,9 @@ class FlightModel:
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = self.THRUST_MAX * 0.7 * compute_altitude_factor(self.Pos[1])
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
-        self.Mach = norm(self.V) / 343  # Mach number
 
     def get_obs(self):
+
         """
         OBSERVATIONS
         States vec for RL stocking position and velocity
@@ -166,62 +179,60 @@ class FlightModel:
             ]
         elif self.task == "level-flight":
             self.obs = [self.Pos[1], self.V[0], self.V[1], self.A[0], self.A[1]]
+        logger.info(f"{self.obs}")
         return self.obs
 
-    def compute_dyna(self, thrust):
+    def compute_dyna(self, thrust, theta, A, V, Pos, m, altitude_factor):
         """
         Compute the dynamcis : Acceleration, Speed and Position
         Speed(t+1) = Speed(t) + Acceleration(t) * Delta_t
         Position(t+1) = Position(t) + Speed(t) * Delta_t
         """
+        logger.debug(f"thrust {thrust}")
+        logger.debug(f"altitude factor")
+        if altitude_factor < 0:
+            err = ValueError(f"Negative altitude_factor {altitude_factor}")
+            logger.error(err)
+            raise err
+        if thrust < 0:
+            err = ValueError(f"Negative thrust")
+            logger.error(err)
+            raise err
         # Update acceleration, speed and position
-        old_A = self.A
-        old_V = self.V
-
-        self.A, self.V[1], self.Pos[1], self.crashed = self.compute_acceleration(
+        old_A = A
+        old_V = V
+        logger.debug(f"compute acceleration, thrust {thrust}")
+        A = self.compute_acceleration(
             thrust,
-            self.V[0],
-            self.V[1],
-            self.theta,
-            self.m,
-            self.Mach,
-            self.Pos[1],
-            self.altitude_factor,
+            V[0],
+            V[1],
+            theta,
+            m,
+            Pos[1],
+            altitude_factor,
         )
-        # print("old A", old_A, "new A", self.A)
-        # print(
-        #     "self.V[0], self.V[1], self.A[0], self.A[1]",
-        #     self.V[0],
-        #     self.V[1],
-        #     self.A[0],
-        #     self.A[1],
-        # )
-        self.V = compute_next_position(self.V[0], self.V[1], self.A[0], self.A[1])
-        # if self.V[0] < 0:
-        # print(
-        #     "crashed",
-        #     self.crashed,
-        #     "thrust",
-        #     thrust,
-        #     "theta",
-        #     self.theta,
-        #     "V",
-        #     self.V[0],
-        #     self.V[1],
-        #     "A",
-        #     self.A[0],
-        #     self.A[1],
-        #     "old V",
-        #     old_V,
-        #     "old A",
-        #     old_A,
-        # )
-        # exit()
-        self.Mach = self.V[0] / 343
+        logger.debug(f"compute next V")
+        V = compute_next_speed(V[0], V[1], A[0], A[1])
+        if V[0] < 0:
+            warning_msg = f"Negative horizontal speed : {V[0]}"
+            logger.debug(warning_msg)
+            warnings.warn(warning_msg)
 
-        self.Pos = compute_next_position(self.Pos[0], self.Pos[1], self.V[0], self.V[1])
-        if self.V[0] > self.MAX_SPEED:
-            self.V[0] = self.MAX_SPEED
+        Mach = V[0] / 343
+        if Mach >= 1:
+            err = ValueError(f"Supersonic {Mach}")
+            logger.error(err)
+            raise err
+        logger.debug(f"compute next Pos")
+        Pos = compute_next_position(Pos[0], Pos[1], V[0], V[1])
+        if Pos[1] < 0:
+            energy = 0.5 * m * V[1] ** 2
+            if energy > CRITICAL_ENERGY:
+                crashed = True
+            Pos[1] = 0
+            V[1] = 0
+            # make the plane bounce when touching the ground
+            A[1] = abs(A[1] * 0.8)
 
         # Update plot lists
         # self.A_vec[0].append(self.A[0])
@@ -230,6 +241,8 @@ class FlightModel:
         self.V_vec[1].append(self.V[1])
         self.Pos_vec[0].append(self.Pos[0])
         self.Pos_vec[1].append(self.Pos[1])
+
+        return A, V, Pos
 
     def print_kpis(self):
         """
@@ -243,7 +256,7 @@ class FlightModel:
         print("max x", max(self.Pos_vec[0]))
 
     def compute_acceleration(
-        self, thrust, V_x, V_z, theta, m, Mach, altitude, altitude_factor
+        self, thrust, V_x, V_z, theta, m, altitude, altitude_factor
     ):
         """
         Compute the acceleration for a timestep based on the thrust by using Newton's second law : F = m.a <=> a = F/m with F the resultant of all forces
@@ -264,19 +277,36 @@ class FlightModel:
         F_x = Thrust_x  * cos(theta) - Drag_x(alpha) * cos(gamma) - Lift_x(alpha) * sin(theta)
         """
         # Compute the magnitude of the speed vector
+
+        logger.debug(f"compute norm V : V_x {V_x}, V_z {V_z}")
         norm_V = norm([V_x, V_z])
+
+        Mach = norm_V / 343
+        if norm_V >= 343:
+            err = ValueError(f"Supersonic {Mach}")
+            logger.error(err)
+            raise err
+
         # print("norm_V", norm_V, V_x, V_z)
         # Compute gamma based on speed
+        logger.debug(f"compute gamma")
         gamma = compute_gamma(V_z, norm_V)
 
         # Compute alpha based on gamma and theta
         # print("THETA", np.degrees(theta))
+        logger.debug(f"compute alpha")
         alpha = compute_alpha(theta, gamma)
 
+        logger.debug(f"compute P")
         # Compute P
+        if m <= 0:
+            err = ValueError(f"Negative or null mass m {m}")
+            logger.error(err)
+            raise err
         P = m * g
         # print("MASS", m)
         # Compute Drag magnitude
+        logger.debug(f"compute drag")
         S_x = compute_Sx(alpha)
         S_z = compute_Sz(alpha)
         C_x = compute_Cx(alpha, Mach)
@@ -290,7 +320,8 @@ class FlightModel:
         drag = compute_drag(S_x, norm_V, C_x, altitude_factor) * flaps_factor
 
         # Compute lift magnitude
-        self.lift = compute_drag(S_z, norm_V, C_z, altitude_factor) * flaps_factor
+        logger.debug(f"compute lift")
+        lift = compute_drag(S_z, norm_V, C_z, altitude_factor) * flaps_factor
 
         # Newton's second law
         # Z-Axis
@@ -298,7 +329,13 @@ class FlightModel:
         cos_theta = cos(theta)
         sin_theta = sin(theta)
 
-        lift_z = cos_theta * self.lift
+        logger.debug(f"compute Z axis projections")
+        lift_z = cos_theta * lift
+        if lift_z < 0:
+            warning_msg = f"Negative z-lift : {lift_z}"
+            logger.debug(warning_msg)
+            warnings.warn(warning_msg)
+
         drag_z = -sin(gamma) * drag
         thrust_z = sin_theta * thrust
         # Compute the sum
@@ -306,39 +343,31 @@ class FlightModel:
         # print("Z lift", lift_z, "drag", drag_z, "thrust_z", thrust_z, "P", P)
         # X-Axis
         # Project on X-axis
-        lift_x = -sin_theta * self.lift
+        logger.debug(f"compute X axis projections")
+        lift_x = -sin_theta * lift
         drag_x = -abs(cos(gamma) * drag)
+        if drag_x > 0:
+            warning_msg = f"Positive x-drag : {drag_x}"
+            logger.debug(warning_msg)
+            warnings.warn(warning_msg)
         thrust_x = cos_theta * thrust
+        if thrust_x < 0:
+            warning_msg = f"Negative x-thrust : {thrust_x}"
+            logger.debug(warning_msg)
+            warnings.warn(warning_msg)
 
         # Compute the sum
         F_x = lift_x + drag_x + thrust_x
-        # print("X lift", lift_x, "drag", drag_x, "thrust_x", thrust_x)
-        # print(
-        #     "theta",
-        #     np.degrees(theta),
-        #     "Vx",
-        #     V_x,
-        #     "drag",
-        #     drag,
-        #     "lift",
-        #     lift,
-        #     "F_x",
-        #     F_x,
-        #     "drag_x",
-        #     drag_x,
-        #     "lift_x",
-        #     lift_x,
-        # )
+
         # Check if we are on the ground, if so prevent from going underground by setting  vertical position and vertical speed to 0.
-        crashed = False
-        if TASK == "take-off":
-            if (altitude <= 0) and (F_z <= 0):
-                F_z = 0
-                energy = 0.5 * m * altitude ** 2
-                if energy > CRITICAL_ENERGY:
-                    crashed = True
-                V_z = 0
-                altitude = 0
+        # crashed = False
+        # if (altitude <= 0) and (F_z <= 0):
+        #         F_z = 0
+        #         energy = 0.5 * m * altitude ** 2
+        #         if energy > CRITICAL_ENERGY:
+        #             crashed = True
+        #         V_z = 0
+        #         altitude = 0
 
         # Compute Acceleration using a = F/m
         A = [F_x / m, F_z / m]
@@ -361,7 +390,7 @@ class FlightModel:
         self.C_vec[0].append(C_x)
         self.C_vec[1].append(C_z)
 
-        return A, V_z, altitude, crashed
+        return A
 
     def action_to_next_state_continuous(self, action):
 
@@ -374,10 +403,11 @@ class FlightModel:
         new_theta = np.radians(
             action["theta"] * 20
         )  # convert the pitch angle to radians
+
         thrust_modified = int(
             (action["thrust"][0]) * self.altitude_factor * self.THRUST_MAX
         )  # Apply the atitude factor to the thrust
-
+        logger.debug(f"iterate over timesteps")
         for i in range(1):
             delta_thrust = np.clip(
                 thrust_modified - self.thrust,
@@ -397,11 +427,22 @@ class FlightModel:
             self.theta_vec_act.append(np.degrees(self.theta) * 100 / 90)
             self.thrust_vec.append(self.thrust * 100 / self.THRUST_MAX)
 
-            self.compute_dyna(self.thrust)
+            # compute new A, V, Pos
+            logger.debug(f"compute dyna")
+            self.A, self.V, self.Pos = self.compute_dyna(
+                self.thrust,
+                self.theta,
+                self.A,
+                self.V,
+                self.Pos,
+                self.m,
+                self.altitude_factor,
+            )
 
             # Fuel
+            logger.debug(f"fuel")
             fuel_variation = compute_fuel_variation(self.thrust)
-            self.fuel_mass += -fuel_variation
+            self.fuel_mass += -min(fuel_variation, self.fuel_mass)
             self.m += -fuel_variation
             self.Fuel_vec.append(self.fuel_mass)
 

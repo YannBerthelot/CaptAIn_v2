@@ -1,6 +1,8 @@
 import unittest
 import numpy as np
+from math import pi, sqrt
 from aerodynamics import (
+    compute_gamma,
     compute_Cz,
     compute_Cx,
     Mach_Cx,
@@ -11,10 +13,24 @@ from aerodynamics import (
     compute_Sx,
     compute_Sz,
     compute_next_position,
+    compute_next_speed,
 )
 
 
 class TestAerodynamic(unittest.TestCase):
+    def test_compute_gamma(self):
+        # Try different gammas
+        self.assertAlmostEqual(compute_gamma(0, 0), 0)
+        self.assertAlmostEqual(compute_gamma(0, 1), 0)
+        self.assertAlmostEqual(compute_gamma(1, 1), pi / 2)
+        self.assertAlmostEqual(compute_gamma(-1, 1), -pi / 2)
+        self.assertAlmostEqual(compute_gamma(1, sqrt(2)), pi / 4)
+        self.assertAlmostEqual(compute_gamma(-1, sqrt(2)), -pi / 4)
+        # Check for error for supersonic speed
+        self.assertRaises(ValueError, compute_gamma, 343, 343)
+        # Check for error for Vz>V
+        self.assertRaises(ValueError, compute_gamma, 1, 0)
+
     def test_cz(self):
         # Test if we get the right Cz when stalling
         self.assertAlmostEqual(compute_Cz(np.radians(20), 0), 0)
@@ -66,3 +82,10 @@ class TestAerodynamic(unittest.TestCase):
         # Check for change when speed is not null
         self.assertNotEqual(compute_next_position(0, 0, 1, 0), [0, 0])
         self.assertNotEqual(compute_next_position(0, 0, 0, 1), [0, 0])
+
+    def test_compute_next_speed(self):
+        # Check no change when A is null
+        self.assertAlmostEqual(compute_next_speed(0, 0, 0, 0), [0, 0])
+        # Check for change when A is not null
+        self.assertNotEqual(compute_next_speed(0, 0, 1, 0), [0, 0])
+        self.assertNotEqual(compute_next_speed(0, 0, 0, 1), [0, 0])
