@@ -149,19 +149,20 @@ class FlightModel:
         """
         if self.task == "take-off":
             self.initial_altitude = 0
-            self.A = [(0), (0)]  # Acceleration vector
-            self.V = [(0), (0)]  # Speed Vector
-            self.Pos = [(0), (self.initial_altitude)]  # Position vector
+            self.A = [0, 0]  # Acceleration vector
+            self.V = [0, 0]  # Speed Vector
+            self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = 0
             self.m = self.init_mass
         elif self.task == "level-flight":
             self.initial_altitude = LEVEL_TARGET
-            self.A = [(0), (0)]  # Acceleration vector
-            self.V = [(245), (0)]  # Speed Vector
-            self.Pos = [(0), (self.initial_altitude)]  # Position vector
+            self.A = [0, 0]  # Acceleration vector
+            self.V = [245, 0]  # Speed Vector
+            self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = self.THRUST_MAX * 0.7 * compute_altitude_factor(self.Pos[1])
+        self.Mach = norm(self.V) / 343
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
 
     def get_obs(self):
@@ -331,10 +332,10 @@ class FlightModel:
 
         logger.debug(f"compute Z axis projections")
         lift_z = cos_theta * lift
-        if lift_z < 0:
-            warning_msg = f"Negative z-lift : {lift_z}"
-            logger.debug(warning_msg)
-            warnings.warn(warning_msg)
+        # if lift_z < 0:
+        #     warning_msg = f"Negative z-lift : {lift_z}"
+        #     logger.debug(warning_msg)
+        #     warnings.warn(warning_msg)
 
         drag_z = -sin(gamma) * drag
         thrust_z = sin_theta * thrust
@@ -438,7 +439,7 @@ class FlightModel:
                 self.m,
                 self.altitude_factor,
             )
-
+            self.Mach = norm(self.V) / 343
             # Fuel
             logger.debug(f"fuel")
             fuel_variation = compute_fuel_variation(self.thrust)

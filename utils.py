@@ -22,7 +22,7 @@ def setup_logger(name, log_file, level, format):
     formatter = logging.Formatter(format)
     """To setup as many loggers as you want"""
 
-    handler = logging.FileHandler(log_file)
+    handler = logging.FileHandler(log_file, mode="w")
     handler.setFormatter(formatter)
 
     logger = logging.getLogger(name)

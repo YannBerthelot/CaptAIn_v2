@@ -26,7 +26,7 @@ MAX_TIMESTEP = 200 / DELTA_T
 
 
 class PlaneEnv(gym.Env):
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 50}
+    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 60}
     """Custom Environment that follows gym interface"""
 
     def __init__(self, task="take-off"):
@@ -56,6 +56,7 @@ class PlaneEnv(gym.Env):
         self.rewards = []
         self.rewards_1 = []
         self.rewards_2 = []
+        self.distance_vec = []
         shutil.rmtree("trajectories")
         os.makedirs("trajectories", exist_ok=True)
 
@@ -84,8 +85,9 @@ class PlaneEnv(gym.Env):
         elif self.task == "level-flight":
             self.overtime = self.FlightModel.timestep > MAX_TIMESTEP
             self.overspeed = self.FlightModel.Mach > 0.98
-            self.over_g = norm(self.FlightModel.A) > (1.5 * 9.81)
-
+            self.g = norm(self.FlightModel.A) / 9.81
+            self.over_g = self.g > 1.5
+            self.out = abs(self.FlightModel.Pos[1] - LEVEL_TARGET) > 1000
             if self.overtime:
                 self.reason_terminal = "Overtime"
                 return True
@@ -96,6 +98,9 @@ class PlaneEnv(gym.Env):
                 self.reason_terminal = "Over G"
                 # print(norm(self.FlightModel.A))
                 return False
+            if self.out:
+                self.reason_terminal = "out"
+                return True
             else:
                 return False
 
@@ -103,20 +108,21 @@ class PlaneEnv(gym.Env):
         if self.task == "take-off":
             # reward_1 = 30 / (np.power(self.FlightModel.V[0], 1.0 / 3.0) + 1)
             reward_1 = self.FlightModel.Pos[0] / 1000
-            reward_2 = 1 / max(1, self.FlightModel.Pos[1])
+            reward_2 = 1 / max(1, self.FlightModel.Pos[1]) * max(self.g, 1)
             reward = self.FlightModel.lift / 10000
             reward = reward / 10
             if self.take_off:
                 reward = 3000 - 2 * (self.FlightModel.Pos[0] / (RUNWAY_LENGTH / 10))
         elif self.task == "level-flight":
+            self.distance_vec.append(abs(LEVEL_TARGET - self.FlightModel.Pos[1]))
             reward = (
                 20
                 - abs(LEVEL_TARGET - self.FlightModel.Pos[1])
                 - norm(self.FlightModel.A)
-            )   
+            )
             if self.FlightModel.Mach > 0.90:
                 reward += -100
-            if self.over_g:
+            if self.over_g or self.out:
                 reward += -1000
 
         return reward
@@ -131,10 +137,15 @@ class PlaneEnv(gym.Env):
         # self.rewards_2.append(reward_2)
         if done:
             self.sum_rewards = np.sum(self.rewards)
-            if self.episode % 1000 == 0:
-                print(
-                    f"Episode {self.episode}, State : {[np.round(x,2) for x in obs]}, Sum of rewards {np.round(self.sum_rewards,0)}, Episode length {self.FlightModel.timestep}, Result {self.reason_terminal}"
-                )
+            if self.episode % 50 == 0:
+                if self.task == "take-off":
+                    print(
+                        f"Episode {self.episode}, State : {[np.round(x,2) for x in obs]}, Sum of rewards {np.round(self.sum_rewards,0)}, Episode length {self.FlightModel.timestep}, Result {self.reason_terminal}"
+                    )
+                elif self.task == "level-flight":
+                    print(
+                        f"Episode {self.episode}, sum of distances to the target {np.round(np.sum(self.distance_vec),0)},Sum of rewards {np.round(self.sum_rewards,0)}"
+                    )
                 fig, ax = plt.subplots()
                 plt.plot(self.FlightModel.Pos_vec[0], self.FlightModel.Pos_vec[1])
                 plt.title("Trajectory")
@@ -216,6 +227,7 @@ class PlaneEnv(gym.Env):
         self.rewards = []
         self.rewards_1 = []
         self.rewards_2 = []
+        self.distance_vec = []
         return np.array(self.FlightModel.obs)
 
     def render(self, mode="human"):

@@ -14,6 +14,3 @@ def converter(input, input_unit, output_unit):
         return input * 0.000539957
     elif (input_unit == "nm") & (output_unit == "m"):
         return input / 0.000539957
-
-
-print(converter(80, "feet", "m"))

@@ -33,37 +33,39 @@ model = PPO(
     ent_coef=0.00,
     batch_size=64,
 )
-n_episodes = 2000
+n_episodes = 200
 
 
-@timing
-def learn(number_timesteps):
-    return model.learn(number_timesteps)
-
-
-model = learn(n_episodes * 200 / DELTA_T)
-model.save(f"ppo_plane_{TASK}")
-
-env = Monitor(
-    wrappable_env, "videos", force=True, video_callable=lambda episode_id: True
-)
-obs = env.reset()
-thrust_log = []
-theta_log = []
-model = PPO.load(f"ppo_plane_{TASK}")
-for i in range(10):
-
+N_BATCH = 10
+for n in range(N_BATCH):
+    print(f"batch {n}/{N_BATCH}")
+    print(vec_env)
+    model.learn(n_episodes * 200 / DELTA_T)
+    model.save(f"ppo_plane_{TASK}")
+    env = Monitor(
+        wrappable_env,
+        f"videos/batch_{n}",
+        video_callable=lambda episode_id: True,
+        force=True,
+    )
     obs = env.reset()
-    while True:
-        action, _states = model.predict(obs, deterministic=False)
-        theta_log.append(action[0])
-        thrust_log.append(action[1])
-        obs, reward, done, info = env.step(action)
-        if done:
-            break
-env.close()
-fig, ax = plt.subplots()
-pd.Series(theta_log).plot(ax=ax, label="Pitch")
-pd.Series(thrust_log).plot(ax=ax, label="Thrust", title="Pitch and Thrust vs time")
-plt.legend()
-plt.show()
+    thrust_log = []
+    theta_log = []
+    model = PPO.load(f"ppo_plane_{TASK}", env=env)
+    for i in range(1):
+
+        obs = env.reset()
+        while True:
+            action, _states = model.predict(obs, deterministic=False)
+            theta_log.append(action[0])
+            thrust_log.append(action[1])
+            obs, reward, done, info = env.step(action)
+            if done:
+                break
+    env.close()
+    model = PPO.load(f"ppo_plane_{TASK}", env=vec_env)
+# fig, ax = plt.subplots()
+# pd.Series(theta_log).plot(ax=ax, label="Pitch")
+# pd.Series(thrust_log).plot(ax=ax, label="Thrust", title="Pitch and Thrust vs time")
+# plt.legend()
+# plt.show()

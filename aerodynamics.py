@@ -84,7 +84,7 @@ def compute_Cx(alpha, Mach):
     Compute the drag coefficient at M = 0 depending on alpha (the higher alpha the higher the drag)
     """
     logger.debug(f"Compute Cx  in : alpha {alpha}, Mach {Mach}")
-    alpha += np.radians(0)
+    alpha += np.radians(5)
     C_x = np.power(np.degrees(alpha) * 0.02, 2) + C_X_MIN
     # print("Alpha", alpha, "Mac", Mach, "Cx", C_x)
     C_x = Mach_Cx(C_x, Mach)
@@ -97,28 +97,33 @@ def compute_Cz(alpha, Mach):
     """
     Compute the lift coefficient at M=0 depending on alpha (the higher the alpha, the higher the lift until stall)
     """
-    logger.debug(f"alpha {alpha}, Mach {Mach}")
+    logger.debug(f"alpha {np.degrees(alpha)}, Mach {Mach}")
     alpha = alpha + np.radians(5)
     # print("alpha", alpha)
     alpha_degrees = np.degrees(alpha)
     sign = np.sign(alpha_degrees)
+    alpha_degrees = abs(alpha_degrees)
     # print('sign', sign)
 
-    if abs(alpha_degrees) < 15:
-        logger.debug(f"Compute Cz <15")
+    if alpha_degrees < 15:
+
         # Quadratic evolution  from C_z = 0 for 0 degrees and reaching a max value of C_z = 1.5 for 15 degrees
-        C_z = sign * abs((alpha_degrees / 15) * C_Z_MAX)
-    elif abs(alpha_degrees) < 20:
-        logger.debug(f"Compute Cz <20")
+        C_z = (alpha_degrees / 15) * C_Z_MAX
+        logger.debug(f"Compute Cz <15 {C_z}")
+    elif alpha_degrees < 20:
+
         # Quadratic evolution  from C_z = 1.5 for 15 degrees to C_2 ~ 1.2 for 20 degrees.
-        C_z = sign * abs((1 - ((abs(alpha_degrees) - 15) / 15)) * C_Z_MAX)
+        C_z = (1 - ((alpha_degrees - 15) / 15)) * C_Z_MAX
+        logger.debug(f"Compute Cz <20 {C_z}")
     else:
         ##if alpha > 20 degrees : Stall => C_z = 0
-        logger.debug(f"Compute Cz >=20")
+
         C_z = 0
-    C_z = Mach_Cz(C_z, Mach)
+        logger.debug(f"Compute Cz >=20 {C_z}")
+
+    C_z = sign * Mach_Cz(C_z, Mach)
     # print("Alpha", alpha, "Mac", Mach, "Cz", C_z)
-    logger.debug(f"Compute Cx out : {C_z}")
+    logger.debug(f"Compute Cz out : {C_z}")
     return C_z
 
 
@@ -141,15 +146,19 @@ def Mach_Cz(Cz, Mach):
     """
     Compute the lift coefficient based on Mach Number and lift coefficient at M =0
     """
-    logger.debug(f"Cz {Cz}, Mach {Mach}")
+    Cz_min = Cz / 2
     M_d = MACH_CRITIC + (1 - MACH_CRITIC) / 4
-    if Mach <= MACH_CRITIC:
+    logger.debug(f"Cz {Cz}, Mach {Mach}, Mach critic {MACH_CRITIC}, M_d {M_d}")
+    if 0 <= Mach <= MACH_CRITIC:
         return Cz
-    elif Mach <= M_d:
-        return Cz + 0.1 * (Mach - MACH_CRITIC)
+    elif MACH_CRITIC < Mach <= M_d:
+        logger.debug(f"Cz {Mach}, Mach {Cz + 0.1 * (Mach - MACH_CRITIC)}")
+        return Cz + (0.2 / 0.18) * (Mach - MACH_CRITIC)
     elif Mach < 1:
-        maximal = Cz + 0.1 * (M_d - MACH_CRITIC)
-        return maximal - 0.8 * (Mach - M_d)
+
+        maximal = Cz + (0.2 / 0.18) * (M_d - MACH_CRITIC)
+        logger.debug(f"Cz {Mach}, Mach {maximal - 0.8 * (Mach - M_d)}")
+        return max(maximal - 0.8 * (Mach - M_d), Cz_min)
     else:
         err = ValueError(f"Supersonic speed {Mach}")
         logger.error(err)
@@ -193,8 +202,8 @@ def compute_drag(S, V, C, altitude_factor):
         logger.error(err)
         raise err
     drag = 0.5 * RHO * altitude_factor * S * C * np.power(V, 2)
-    if drag < 0:
-        err = ValueError(f"Negative drag = {drag}")
+    if (C > 0) & (drag < 0):
+        err = ValueError(f"Negative drag for posiive C = {C},{drag}")
         logger.error(err)
         raise err
     return drag
