@@ -8,8 +8,11 @@ authors = ["Yann Berthelot"]
 python = "^3.8"
 gym = {git = "https://github.com/openai/gym.git"}
 stable-baselines3 = "^1.0"
+tensorboard = "^2.4.1"
+moviepy = "^1.0.3"
 
 [tool.poetry.dev-dependencies]
+black = {version = "^20.8b1", allow-prereleases = true}
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

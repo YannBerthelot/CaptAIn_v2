@@ -1,5 +1,6 @@
 from functools import wraps
 from time import time
+import logging
 
 
 def timing(f):
@@ -15,3 +16,17 @@ def timing(f):
         return result
 
     return wrap
+
+
+def setup_logger(name, log_file, level, format, mode="w"):
+    formatter = logging.Formatter(format)
+    """To setup as many loggers as you want"""
+
+    handler = logging.FileHandler(log_file, mode=mode)
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
