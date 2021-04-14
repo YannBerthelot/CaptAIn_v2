@@ -18,11 +18,11 @@ def timing(f):
     return wrap
 
 
-def setup_logger(name, log_file, level, format):
+def setup_logger(name, log_file, level, format, mode="w"):
     formatter = logging.Formatter(format)
     """To setup as many loggers as you want"""
 
-    handler = logging.FileHandler(log_file, mode="w")
+    handler = logging.FileHandler(log_file, mode=mode)
     handler.setFormatter(formatter)
 
     logger = logging.getLogger(name)

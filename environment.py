@@ -1,13 +1,10 @@
 import os
 import logging
 import warnings
-from functools import lru_cache
-from configparser import ConfigParser
 
-import math
-from math import cos, sin, ceil, floor
+from configparser import ConfigParser
+from math import cos, sin, floor
 import numpy as np
-from numpy import arcsin
 from numpy.linalg import norm
 from converter import converter
 from aerodynamics import (
@@ -25,16 +22,7 @@ from aerodynamics import (
 )
 from utils import setup_logger
 
-# create and configure logger
-os.makedirs("logs", exist_ok=True)
 
-LOG_FORMAT = "%(levelno)s %(asctime)s %(filename)s %(funcName)s - %(message)s"
-logger = setup_logger(
-    "environment_logger",
-    "logs/environment.log",
-    level=logging.DEBUG,
-    format=LOG_FORMAT,
-)
 # create and configure parser
 parser = ConfigParser()
 thisfolder = os.path.dirname(os.path.abspath(__file__))
@@ -43,17 +31,33 @@ parser.read(config_path)
 
 PRECISION = 4
 CACHE_SIZE = 100
-SFC = eval(parser.get("flight_model", "SFC"))
-DELTA_T = eval(parser.get("flight_model", "Timestep_size"))
-RHO = eval(parser.get("flight_model", "Rho"))
-C_X_MIN = eval(parser.get("flight_model", "C_x_min"))
-C_Z_MAX = eval(parser.get("flight_model", "C_z_max"))
-S_WINGS = eval(parser.get("flight_model", "Surface_wings"))
-S_FRONT = eval(parser.get("flight_model", "Surface_front"))
+SFC = float(parser.get("flight_model", "SFC"))
+DELTA_T = float(parser.get("flight_model", "Timestep_size"))
+RHO = float(parser.get("flight_model", "Rho"))
+C_X_MIN = float(parser.get("flight_model", "C_x_min"))
+C_Z_MAX = float(parser.get("flight_model", "C_z_max"))
+S_WINGS = float(parser.get("flight_model", "Surface_wings"))
+S_FRONT = float(parser.get("flight_model", "Surface_front"))
 g = 9.81
 TASK = parser.get("flight_model", "Task")
-CRITICAL_ENERGY = eval(parser.get("flight_model", "Critical_energy"))
-LEVEL_TARGET = converter(eval(parser.get("task", "LEVEL_TARGET")), "feet", "m")
+CRITICAL_ENERGY = float(parser.get("flight_model", "Critical_energy"))
+LEVEL_TARGET = converter(float(parser.get("task", "LEVEL_TARGET")), "feet", "m")
+DEBUG = bool(parser.get("debug", "debug"))
+
+# create and configure logger
+os.makedirs("logs", exist_ok=True)
+print("debug", DEBUG)
+if DEBUG:
+    level = logging.DEBUG
+else:
+    level = logging.INFO
+LOG_FORMAT = "%(levelno)s %(asctime)s %(funcName)s - %(message)s"
+logger = setup_logger(
+    "environment_logger",
+    "logs/environment.log",
+    level=level,
+    format=LOG_FORMAT,
+)
 
 
 class FlightModel:
@@ -65,8 +69,10 @@ class FlightModel:
         Constants used throughout the model
         """
         self.g = 9.81  # gravity vector in m.s-2
-        self.init_mass = 73500
-        self.m = 73500  # mass in kg
+        self.init_mass = 54412.0
+        self.init_fuel_mass = 23860 / 1.25
+        self.fuel_mass = self.init_fuel_mass  # Fuel mass at take-off in kg
+        self.m = self.init_mass + self.init_fuel_mass  # mass in kg
         self.RHO = 1.225  # air density in kg.m-3
         self.S_front = 12.6  # Frontal surface in m2
         self.S_wings = 122.6  # Wings surface in m2
@@ -78,7 +84,7 @@ class FlightModel:
         self.MAX_SPEED = 250  # Max speed bearable by the plane
         self.flaps_factor = 1.5  # Lift improvement due to flaps
         self.SFC = 17.5 / 1000  # Specific Fuel Consumption in kg/(N.s)
-        self.fuel_mass = 23860 / 1.25  # Fuel mass at take-off in kg
+
         self.M_critic = 0.78  # Critical Mach Number
         self.critical_energy = (
             1323000  # Maximal acceptable kinetic energy at landing in Joules
@@ -132,8 +138,8 @@ class FlightModel:
         self.action_vec = [
             [thrust, theta] for thrust in range(5, 11) for theta in range(0, 15)
         ]
-        self.thrust_act_vec = [thrust for thrust in range(5, 11)]
-        self.theta_act_vec = [theta for theta in range(0, 15)]
+        self.thrust_act_vec = range(5, 11)
+        self.theta_act_vec = range(0, 15)
 
     def init_state(self):
         """
@@ -142,6 +148,7 @@ class FlightModel:
         self.V_R_ok = False  # Has VR been reached
         self.crashed = False
         self.timestep = 0  # init timestep
+        self.m = self.init_mass + self.init_fuel_mass
 
         """
         DYNAMICS/INITIAL POSITION
@@ -179,8 +186,16 @@ class FlightModel:
                 self.V[1],
             ]
         elif self.task == "level-flight":
-            self.obs = [self.Pos[1], self.V[0], self.V[1], self.A[0], self.A[1]]
-        logger.info(f"{self.obs}")
+            self.obs = [
+                self.Pos[1],
+                self.V[0],
+                self.V[1],
+                self.A[0],
+                self.A[1],
+                self.thrust,
+                self.theta,
+            ]
+        logger.debug(f"{self.obs}")
         return self.obs
 
     def compute_dyna(self, thrust, theta, A, V, Pos, m, altitude_factor):
@@ -200,8 +215,6 @@ class FlightModel:
             logger.error(err)
             raise err
         # Update acceleration, speed and position
-        old_A = A
-        old_V = V
         logger.debug(f"compute acceleration, thrust {thrust}")
         A = self.compute_acceleration(
             thrust,
@@ -215,8 +228,8 @@ class FlightModel:
         logger.debug(f"compute next V")
         V = compute_next_speed(V[0], V[1], A[0], A[1])
         if V[0] < 0:
-            warning_msg = f"Negative horizontal speed : {V[0]}"
-            logger.debug(warning_msg)
+            warning_msg = f"Negative horizontal speed : {V[0]}, thrust {thrust}, theta {theta}, A {A}, V {V}, Pos{Pos}, m {m}"
+            logger.error(warning_msg)
             warnings.warn(warning_msg)
 
         Mach = V[0] / 343
@@ -229,7 +242,7 @@ class FlightModel:
         if Pos[1] < 0:
             energy = 0.5 * m * V[1] ** 2
             if energy > CRITICAL_ENERGY:
-                crashed = True
+                self.crashed = True
             Pos[1] = 0
             V[1] = 0
             # make the plane bounce when touching the ground
@@ -290,24 +303,24 @@ class FlightModel:
 
         # print("norm_V", norm_V, V_x, V_z)
         # Compute gamma based on speed
-        logger.debug(f"compute gamma")
+        logger.debug("compute gamma")
         gamma = compute_gamma(V_z, norm_V)
 
         # Compute alpha based on gamma and theta
         # print("THETA", np.degrees(theta))
-        logger.debug(f"compute alpha")
+        logger.debug("compute alpha")
         alpha = compute_alpha(theta, gamma)
 
-        logger.debug(f"compute P")
+        logger.debug("compute P")
         # Compute P
         if m <= 0:
-            err = ValueError(f"Negative or null mass m {m}")
+            err = ValueError("Negative or null mass m {m}")
             logger.error(err)
             raise err
         P = m * g
         # print("MASS", m)
         # Compute Drag magnitude
-        logger.debug(f"compute drag")
+        logger.debug("compute drag")
         S_x = compute_Sx(alpha)
         S_z = compute_Sz(alpha)
         C_x = compute_Cx(alpha, Mach)
@@ -321,7 +334,7 @@ class FlightModel:
         drag = compute_drag(S_x, norm_V, C_x, altitude_factor) * flaps_factor
 
         # Compute lift magnitude
-        logger.debug(f"compute lift")
+        logger.debug("compute lift")
         lift = compute_drag(S_z, norm_V, C_z, altitude_factor) * flaps_factor
 
         # Newton's second law
@@ -330,7 +343,7 @@ class FlightModel:
         cos_theta = cos(theta)
         sin_theta = sin(theta)
 
-        logger.debug(f"compute Z axis projections")
+        logger.debug("compute Z axis projections")
         lift_z = cos_theta * lift
         # if lift_z < 0:
         #     warning_msg = f"Negative z-lift : {lift_z}"
@@ -344,7 +357,7 @@ class FlightModel:
         # print("Z lift", lift_z, "drag", drag_z, "thrust_z", thrust_z, "P", P)
         # X-Axis
         # Project on X-axis
-        logger.debug(f"compute X axis projections")
+        logger.debug("compute X axis projections")
         lift_x = -sin_theta * lift
         drag_x = -abs(cos(gamma) * drag)
         if drag_x > 0:
@@ -444,7 +457,13 @@ class FlightModel:
             logger.debug(f"fuel")
             fuel_variation = compute_fuel_variation(self.thrust)
             self.fuel_mass += -min(fuel_variation, self.fuel_mass)
-            self.m += -fuel_variation
+            # self.m += -min(fuel_variation, self.fuel_mass)
+            if self.m < self.init_mass:
+                err = ValueError(
+                    f"Consumed more fuel than available m : {self.m}, fuel cons {fuel_variation}, available fuel : {self.fuel_mass}"
+                )
+                logger.error(err)
+                raise err
             self.Fuel_vec.append(self.fuel_mass)
 
             self.get_obs()

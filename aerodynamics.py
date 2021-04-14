@@ -1,12 +1,11 @@
 import os
 import logging
 from configparser import ConfigParser
-from functools import lru_cache
+
 
 import numpy as np
 from numpy import arcsin, cos, sin
-from numpy.linalg import norm
-from utils import timing, setup_logger
+from utils import setup_logger
 
 
 # create and configure parser
@@ -15,20 +14,20 @@ thisfolder = os.path.dirname(os.path.abspath(__file__))
 config_path = os.path.join(thisfolder, "config.ini")
 parser.read(config_path)
 
-MACH_CRITIC = eval(parser.get("flight_model", "Mach_critic"))
-PRECISION = eval(parser.get("flight_model", "Precision"))
+MACH_CRITIC = float(parser.get("flight_model", "Mach_critic"))
+PRECISION = int(parser.get("flight_model", "Precision"))
 CACHE_SIZE = int(1e10)
-SFC = eval(parser.get("flight_model", "SFC"))
-DELTA_T = eval(parser.get("flight_model", "Timestep_size"))
-RHO = eval(parser.get("flight_model", "Rho"))
-C_X_MIN = eval(parser.get("flight_model", "C_x_min"))
-C_Z_MAX = eval(parser.get("flight_model", "C_z_max"))
-S_WINGS = eval(parser.get("flight_model", "Surface_wings"))
-S_FRONT = eval(parser.get("flight_model", "Surface_front"))
+SFC = float(parser.get("flight_model", "SFC"))
+DELTA_T = float(parser.get("flight_model", "Timestep_size"))
+RHO = float(parser.get("flight_model", "Rho"))
+C_X_MIN = float(parser.get("flight_model", "C_x_min"))
+C_Z_MAX = float(parser.get("flight_model", "C_z_max"))
+S_WINGS = float(parser.get("flight_model", "Surface_wings"))
+S_FRONT = float(parser.get("flight_model", "Surface_front"))
 g = 9.81
 TASK = parser.get("flight_model", "Task")
-CRITICAL_ENERGY = eval(parser.get("flight_model", "Critical_energy"))
-DEBUG = eval(parser.get("debug", "debug"))
+CRITICAL_ENERGY = float(parser.get("flight_model", "Critical_energy"))
+DEBUG = bool(parser.get("debug", "debug"))
 
 # create and configure logger
 os.makedirs("logs", exist_ok=True)
@@ -36,11 +35,11 @@ if DEBUG:
     level = logging.DEBUG
 else:
     level = logging.INFO
-LOG_FORMAT = "%(levelno)s %(asctime)s %(filename)s %(funcName)s - %(message)s"
+LOG_FORMAT = "%(levelno)s %(asctime)s %(funcName)s - %(message)s"
 logger = setup_logger(
     "aerodynamics_logger",
     "logs/aerodynamics.log",
-    level=logging.DEBUG,
+    level=level,
     format=LOG_FORMAT,
 )
 
@@ -66,22 +65,23 @@ def compute_gamma(V_z, norm_V):
         logger.error(err)
         raise err
     if V_z > norm_V:
-        err = ValueError(f"V_z higher than V")
+        err = ValueError("V_z higher than V")
         logger.error(err)
         raise err
     if norm_V > 0:
         return arcsin(V_z / norm_V)
-    elif norm_V == 0:
+    if norm_V == 0:
         return 0
     else:
-        err = ValueError(f"Negative norm")
+        err = ValueError("Negative norm")
         logger.error(err)
         raise err
 
 
 def compute_Cx(alpha, Mach):
     """
-    Compute the drag coefficient at M = 0 depending on alpha (the higher alpha the higher the drag)
+    Compute the drag coefficient at M = 0 depending on alpha
+    (the higher alpha the higher the drag)
     """
     logger.debug(f"Compute Cx  in : alpha {alpha}, Mach {Mach}")
     alpha += np.radians(5)
@@ -95,9 +95,10 @@ def compute_Cx(alpha, Mach):
 
 def compute_Cz(alpha, Mach):
     """
-    Compute the lift coefficient at M=0 depending on alpha (the higher the alpha, the higher the lift until stall)
+    Compute the lift coefficient at M=0 depending on alpha
+    (the higher the alpha, the higher the lift until stall)
     """
-    logger.debug(f"alpha {np.degrees(alpha)}, Mach {Mach}")
+    logger.debug("alpha %s, Mach %s", np.degrees(alpha), Mach)
     alpha = alpha + np.radians(5)
     # print("alpha", alpha)
     alpha_degrees = np.degrees(alpha)
@@ -134,7 +135,7 @@ def Mach_Cx(Cx, Mach):
     logger.debug(f"Cx {Cx}, Mach {Mach}")
     if Mach < MACH_CRITIC:
         return Cx / np.sqrt(1 - (Mach ** 2))
-    elif Mach < 1:
+    if Mach < 1:
         return Cx * 15 * (Mach - MACH_CRITIC) + Cx / np.sqrt(1 - (MACH_CRITIC ** 2))
     else:
         err = ValueError(f"Supersonic speed {Mach}")
@@ -151,11 +152,10 @@ def Mach_Cz(Cz, Mach):
     logger.debug(f"Cz {Cz}, Mach {Mach}, Mach critic {MACH_CRITIC}, M_d {M_d}")
     if 0 <= Mach <= MACH_CRITIC:
         return Cz
-    elif MACH_CRITIC < Mach <= M_d:
+    if MACH_CRITIC < Mach <= M_d:
         logger.debug(f"Cz {Mach}, Mach {Cz + 0.1 * (Mach - MACH_CRITIC)}")
         return Cz + (0.2 / 0.18) * (Mach - MACH_CRITIC)
-    elif Mach < 1:
-
+    if Mach < 1:
         maximal = Cz + (0.2 / 0.18) * (M_d - MACH_CRITIC)
         logger.debug(f"Cz {Mach}, Mach {maximal - 0.8 * (Mach - M_d)}")
         return max(maximal - 0.8 * (Mach - M_d), Cz_min)
@@ -224,7 +224,8 @@ def compute_altitude_factor(altitude):
 
 def compute_Sx(alpha):
     """
-    update the value of the surface orthogonal to the speed vector depending on alpha by projecting the x and z surface.
+    update the value of the surface orthogonal to the speed vector
+    depending on alpha by projecting the x and z surface.
     S_x = cos(alpha)*S_front + sin(alpha) * S_wings
     """
     logger.debug(f"alpha:{alpha}")

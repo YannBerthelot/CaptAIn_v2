@@ -1,5 +1,6 @@
 import os
 import gym
+import logging
 import pandas as pd
 from gym import spaces
 import numpy as np
@@ -9,6 +10,7 @@ import matplotlib.pyplot as plt
 import pyglet
 import shutil
 from numpy.linalg import norm
+from utils import setup_logger
 
 TAKE_OFF_ALTITUDE = converter(80, "feet", "m")  # 80 feets
 RUNWAY_LENGTH = 5000  # 5000m
@@ -23,6 +25,21 @@ parser.read(config_path)
 DELTA_T = eval(parser.get("flight_model", "Timestep_size"))
 LEVEL_TARGET = converter(eval(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 MAX_TIMESTEP = 200 / DELTA_T
+DEBUG = eval(parser.get("debug", "debug"))
+
+# create and configure logger
+os.makedirs("logs", exist_ok=True)
+if DEBUG:
+    level = logging.DEBUG
+else:
+    level = logging.INFO
+LOG_FORMAT = "%(levelno)s %(asctime)s %(funcName)s - %(message)s"
+logger = setup_logger(
+    "gym_logger",
+    "logs/gym.log",
+    level=level,
+    format=LOG_FORMAT,
+)
 
 
 class PlaneEnv(gym.Env):
@@ -108,22 +125,26 @@ class PlaneEnv(gym.Env):
         if self.task == "take-off":
             # reward_1 = 30 / (np.power(self.FlightModel.V[0], 1.0 / 3.0) + 1)
             reward_1 = self.FlightModel.Pos[0] / 1000
-            reward_2 = 1 / max(1, self.FlightModel.Pos[1]) * max(self.g, 1)
+            reward_2 = 1 / max(1, self.FlightModel.Pos[1])
             reward = self.FlightModel.lift / 10000
             reward = reward / 10
             if self.take_off:
                 reward = 3000 - 2 * (self.FlightModel.Pos[0] / (RUNWAY_LENGTH / 10))
         elif self.task == "level-flight":
-            self.distance_vec.append(abs(LEVEL_TARGET - self.FlightModel.Pos[1]))
-            reward = (
-                20
-                - abs(LEVEL_TARGET - self.FlightModel.Pos[1])
-                - norm(self.FlightModel.A)
-            )
-            if self.FlightModel.Mach > 0.90:
-                reward += -100
-            if self.over_g or self.out:
+            distance = abs(LEVEL_TARGET - self.FlightModel.Pos[1])
+            self.distance_vec.append(distance)
+            reward = -distance / 1000  # * max(self.g, 1)
+            # 20
+
+            #     - norm(self.FlightModel.A)
+            # )
+            # if self.FlightModel.Mach > 0.90:
+            #     reward += -100
+            if self.out:
                 reward += -1000
+
+            # if self.over_g or self.out:
+            #     reward += -1000
 
         return reward
 
@@ -133,6 +154,10 @@ class PlaneEnv(gym.Env):
         done = self.terminal()
         reward = self.compute_reward(obs)
         self.rewards.append(reward)
+        if done:
+            logger.info(
+                f"Terminal : reason  {self.reason_terminal}, sum of rewards {sum(self.rewards)}"
+            )
         # self.rewards_1.append(reward_1)
         # self.rewards_2.append(reward_2)
         if done:
