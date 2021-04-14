@@ -11,10 +11,10 @@ import pyglet
 import shutil
 from numpy.linalg import norm
 from utils import setup_logger
+from configparser import ConfigParser
 
 TAKE_OFF_ALTITUDE = converter(80, "feet", "m")  # 80 feets
 RUNWAY_LENGTH = 5000  # 5000m
-from configparser import ConfigParser
 
 
 parser = ConfigParser()
@@ -74,7 +74,8 @@ class PlaneEnv(gym.Env):
         self.rewards_1 = []
         self.rewards_2 = []
         self.distance_vec = []
-        shutil.rmtree("trajectories")
+        if "trajectories" in os.listdir():
+            shutil.rmtree("trajectories")
         os.makedirs("trajectories", exist_ok=True)
 
     def terminal(self):
@@ -289,8 +290,9 @@ class PlaneEnv(gym.Env):
             )
 
             axleoffset = cartheight / 4.0
-            cart = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
-            # cart = rendering.Image("plane.png", 1.0, 1.0)
+            # cart = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+            cart = rendering.Image("A320_R.png", 300, 100)
+            # cart = rendering.Image()
 
             self.carttrans = rendering.Transform()
             cart.add_attr(self.carttrans)
