@@ -5,7 +5,7 @@ description = ""
 authors = ["Yann Berthelot"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.8,<3.10"
 gym = {git = "https://github.com/openai/gym.git"}
 stable-baselines3 = "^1.0"
 tensorboard = "^2.4.1"

@@ -1,12 +1,11 @@
 import os
+import ctypes
+import time
 import logging
 from configparser import ConfigParser
-
-
 import numpy as np
 from numpy import arcsin, cos, sin
-from utils import setup_logger
-
+from utils import setup_logger, timing
 
 # create and configure parser
 parser = ConfigParser()
@@ -42,6 +41,14 @@ logger = setup_logger(
     level=level,
     format=LOG_FORMAT,
 )
+handle = ctypes.CDLL("./aerodynamics.so")
+
+
+handle.c_compute_alpha.argtypes = [ctypes.c_double, ctypes.c_double]
+
+
+def c_compute_alpha(theta, gamma):
+    return handle.c_compute_alpha(theta, gamma)
 
 
 def compute_alpha(theta, gamma):
@@ -52,6 +59,13 @@ def compute_alpha(theta, gamma):
     logger.debug(f"theta {theta},gamma {gamma}")
     # print("theta", np.degrees(theta), "gamma", np.degrees(gamma))
     return theta - gamma
+
+
+handle.c_compute_gamma.argtypes = [ctypes.c_double, ctypes.c_double]
+
+
+def c_compute_gamma(vz, norm_vz):
+    return handle.c_compute_alpha(vz, norm_vz)
 
 
 def compute_gamma(V_z, norm_V):
@@ -78,7 +92,19 @@ def compute_gamma(V_z, norm_V):
         raise err
 
 
-def compute_Cx(alpha, Mach):
+handle.c_compute_cx.argtypes = [
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.c_double,
+]
+
+
+def c_compute_cx(alpha, mach):
+    return handle.c_compute_cx(alpha, mach, C_X_MIN, MACH_CRITIC)
+
+
+def compute_cx(alpha, Mach):
     """
     Compute the drag coefficient at M = 0 depending on alpha
     (the higher alpha the higher the drag)
@@ -266,4 +292,38 @@ def compute_next_speed(V_x, V_z, A_x, A_z):
 
 
 if __name__ == "__main__":
-    print("aerodynamics")
+    # alpha
+    start = time.time()
+    print("compute_alpha")
+    for i in range(100):
+        compute_alpha(1, 2)
+    print(time.time() - start)
+    start = time.time()
+    print("compute_alpha C++")
+    for i in range(100):
+        c_compute_alpha(1, 2)
+    print(time.time() - start)
+
+    # gamma
+    start = time.time()
+    print("compute_gamma")
+    for i in range(100):
+        compute_gamma(1, 2)
+    print(time.time() - start)
+    start = time.time()
+    print("compute_gamma C++")
+    for i in range(100):
+        c_compute_gamma(1, 2)
+    print(time.time() - start)
+
+    # gamma
+    start = time.time()
+    print("compute_cx")
+    for i in range(100):
+        compute_cx(1, 0.7)
+    print(time.time() - start)
+    start = time.time()
+    print("compute_cx C++")
+    for i in range(100):
+        c_compute_cx(1, 0.7)
+    print(time.time() - start)
