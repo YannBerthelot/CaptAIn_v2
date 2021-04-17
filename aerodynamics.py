@@ -1,11 +1,12 @@
 import os
-import ctypes
 import time
 import logging
 from configparser import ConfigParser
 import numpy as np
-from numpy import arcsin, cos, sin
+from math import asin, cos, sin
+from numpy.linalg import norm
 from utils import setup_logger, timing
+from numba import njit, jit, prange
 
 # create and configure parser
 parser = ConfigParser()
@@ -41,170 +42,88 @@ logger = setup_logger(
     level=level,
     format=LOG_FORMAT,
 )
-handle = ctypes.CDLL("./aerodynamics.so")
 
 
-handle.c_compute_alpha.argtypes = [ctypes.c_double, ctypes.c_double]
-
-
-def c_compute_alpha(theta, gamma):
-    return handle.c_compute_alpha(theta, gamma)
-
-
-def compute_alpha(theta, gamma):
-    """
-    Compute alpha (the angle between the plane's axis and the speed vector).
-    alpha = theta - gamma
-    """
-    logger.debug(f"theta {theta},gamma {gamma}")
-    # print("theta", np.degrees(theta), "gamma", np.degrees(gamma))
-    return theta - gamma
-
-
-handle.c_compute_gamma.argtypes = [ctypes.c_double, ctypes.c_double]
-
-
-def c_compute_gamma(vz, norm_vz):
-    return handle.c_compute_alpha(vz, norm_vz)
-
-
+@njit(nogil=True, cache=True)
 def compute_gamma(V_z, norm_V):
     """
     Compute gamma (the angle between ground and the speed vector) using trigonometry.
     sin(gamma) = V_z / V -> gamma = arcsin(V_z/V)
     """
-    logger.debug(f"V_z : {V_z}, norm_V : {norm_V}")
-    if (norm_V >= 343) or (V_z >= 343):
-        err = ValueError(f"Supersonic speed {norm_V/343}")
-        logger.error(err)
-        raise err
-    if V_z > norm_V:
-        err = ValueError("V_z higher than V")
-        logger.error(err)
-        raise err
+    # logger.debug(f"V_z : {V_z}, norm_V : {norm_V}")
     if norm_V > 0:
-        return arcsin(V_z / norm_V)
+        return asin(V_z / norm_V)
     if norm_V == 0:
         return 0
-    else:
-        err = ValueError("Negative norm")
-        logger.error(err)
-        raise err
 
 
-handle.c_compute_cx.argtypes = [
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.c_double,
-]
-
-
-def c_compute_cx(alpha, mach):
-    return handle.c_compute_cx(alpha, mach, C_X_MIN, MACH_CRITIC)
-
-
+@njit(nogil=True, cache=True)
 def compute_cx(alpha, Mach):
     """
     Compute the drag coefficient at M = 0 depending on alpha
     (the higher alpha the higher the drag)
     """
-    logger.debug(f"Compute Cx  in : alpha {alpha}, Mach {Mach}")
-    alpha += np.radians(5)
-    C_x = np.power(np.degrees(alpha) * 0.02, 2) + C_X_MIN
+    # logger.debug(f"Compute Cx  in : alpha {alpha}, Mach {Mach}")
+    cx = np.power((np.degrees(alpha) + 5) * 0.02, 2) + C_X_MIN
     # print("Alpha", alpha, "Mac", Mach, "Cx", C_x)
-    C_x = Mach_Cx(C_x, Mach)
-    logger.debug(f"Compute Cx out : {C_x}")
+    if Mach < MACH_CRITIC:
+        return cx / np.sqrt(1 - (Mach ** 2))
+    if Mach < 1:
+        return cx * 15 * (Mach - MACH_CRITIC) + (cx / np.sqrt(1 - (Mach ** 2)))
 
-    return C_x
 
-
-def compute_Cz(alpha, Mach):
+@njit(nogil=True, cache=True)
+def compute_cz(alpha, mach):
     """
     Compute the lift coefficient at M=0 depending on alpha
     (the higher the alpha, the higher the lift until stall)
     """
-    logger.debug("alpha %s, Mach %s", np.degrees(alpha), Mach)
-    alpha = alpha + np.radians(5)
+    # logger.debug("alpha %s, Mach %s", np.degrees(alpha), Mach)
     # print("alpha", alpha)
-    alpha_degrees = np.degrees(alpha)
-    sign = np.sign(alpha_degrees)
-    alpha_degrees = abs(alpha_degrees)
+    alpha = np.degrees(alpha) + 5
+    sign = np.sign(alpha)
+    alpha = sign * alpha
     # print('sign', sign)
 
-    if alpha_degrees < 15:
+    if alpha < 15:
 
         # Quadratic evolution  from C_z = 0 for 0 degrees and reaching a max value of C_z = 1.5 for 15 degrees
-        C_z = (alpha_degrees / 15) * C_Z_MAX
-        logger.debug(f"Compute Cz <15 {C_z}")
-    elif alpha_degrees < 20:
+        cz = (alpha / 15) * C_Z_MAX
+        # logger.debug(f"Compute Cz <15 {C_z}")
+    elif alpha < 20:
 
         # Quadratic evolution  from C_z = 1.5 for 15 degrees to C_2 ~ 1.2 for 20 degrees.
-        C_z = (1 - ((alpha_degrees - 15) / 15)) * C_Z_MAX
-        logger.debug(f"Compute Cz <20 {C_z}")
+        cz = (1 - ((alpha - 15) / 15)) * C_Z_MAX
+        # logger.debug(f"Compute Cz <20 {C_z}")
     else:
         ##if alpha > 20 degrees : Stall => C_z = 0
 
-        C_z = 0
-        logger.debug(f"Compute Cz >=20 {C_z}")
-
-    C_z = sign * Mach_Cz(C_z, Mach)
+        cz = 0
+        # logger.debug(f"Compute Cz >=20 {C_z}")
+    cz_min = cz / 2
+    md = MACH_CRITIC + (1 - MACH_CRITIC) / 4
+    if 0 <= mach <= MACH_CRITIC:
+        return sign * cz
     # print("Alpha", alpha, "Mac", Mach, "Cz", C_z)
-    logger.debug(f"Compute Cz out : {C_z}")
-    return C_z
+    if MACH_CRITIC < mach <= md:
+        # logger.debug(f"cz {Mach}, Mach {cz + 0.1 * (mach - MACH_CRITIC)}")
+        return sign * (cz + (0.2 / 0.18) * (mach - MACH_CRITIC))
+    if mach < 1:
+        maximal = cz + (0.2 / 0.18) * (md - MACH_CRITIC)
+        # logger.debug(f"Cz {Mach}, Mach {maximal - 0.8 * (Mach - M_d)}")
+        return sign * max(maximal - 0.8 * (mach - md), cz_min)
 
 
-def Mach_Cx(Cx, Mach):
-    """
-    Compute the drag coefficient based on Mach Number and drag coefficient at M =0
-    """
-    logger.debug(f"Cx {Cx}, Mach {Mach}")
-    if Mach < MACH_CRITIC:
-        return Cx / np.sqrt(1 - (Mach ** 2))
-    if Mach < 1:
-        return Cx * 15 * (Mach - MACH_CRITIC) + Cx / np.sqrt(1 - (MACH_CRITIC ** 2))
-    else:
-        err = ValueError(f"Supersonic speed {Mach}")
-        logger.error(err)
-        raise err
-
-
-def Mach_Cz(Cz, Mach):
-    """
-    Compute the lift coefficient based on Mach Number and lift coefficient at M =0
-    """
-    Cz_min = Cz / 2
-    M_d = MACH_CRITIC + (1 - MACH_CRITIC) / 4
-    logger.debug(f"Cz {Cz}, Mach {Mach}, Mach critic {MACH_CRITIC}, M_d {M_d}")
-    if 0 <= Mach <= MACH_CRITIC:
-        return Cz
-    if MACH_CRITIC < Mach <= M_d:
-        logger.debug(f"Cz {Mach}, Mach {Cz + 0.1 * (Mach - MACH_CRITIC)}")
-        return Cz + (0.2 / 0.18) * (Mach - MACH_CRITIC)
-    if Mach < 1:
-        maximal = Cz + (0.2 / 0.18) * (M_d - MACH_CRITIC)
-        logger.debug(f"Cz {Mach}, Mach {maximal - 0.8 * (Mach - M_d)}")
-        return max(maximal - 0.8 * (Mach - M_d), Cz_min)
-    else:
-        err = ValueError(f"Supersonic speed {Mach}")
-        logger.error(err)
-        raise err
-
-
+@njit(nogil=True, cache=True)
 def compute_fuel_variation(thrust):
     """
     Compute the fuel mass variation at each timestep based on the thrust.
     Update the remaining fuell mass and plane mass accordingly
     """
-    logger.debug(f"thrust {thrust}")
-    if thrust < 0:
-        err = ValueError("Negative thrust")
-        logger.error(err)
-        raise err
-
     return SFC * DELTA_T * thrust / 1000
 
 
+@njit(nogil=True, cache=True)
 def compute_drag(S, V, C, altitude_factor):
     """
     Compute the drag using:
@@ -214,116 +133,387 @@ def compute_drag(S, V, C, altitude_factor):
     RHO : air density
     F = 1/2 * S * C * V^2
     """
-    # print(
-    #     "COMPUTE DRAG", "S", S, "V", V, "C", C, "altfact", altitude_factor, "rho", RHO
-    # )
-    # print("RHO", RHO, "alt fact", altitude_factor, "S", S, "C", C, "V", V)
-    logger.debug(f"S:{S},V:{V},C:{C},altitude_factor:{altitude_factor}")
-    if V >= 343:
-        err = ValueError(f"Supersonic speed {V/343}")
-        logger.error(err)
-        raise err
-    if S <= 0:
-        err = ValueError(f"Negative or zero surface :{S}")
-        logger.error(err)
-        raise err
-    drag = 0.5 * RHO * altitude_factor * S * C * np.power(V, 2)
-    if (C > 0) & (drag < 0):
-        err = ValueError(f"Negative drag for posiive C = {C},{drag}")
-        logger.error(err)
-        raise err
-    return drag
+    return 0.5 * RHO * altitude_factor * S * C * np.power(V, 2)
 
 
+@njit(nogil=True, cache=True)
 def compute_altitude_factor(altitude):
     """
     Compute the reducting in reactor's power with rising altitude.
     """
-    logger.debug(f"altitude:{altitude}")
-    if altitude < 0:
-        err = ValueError(f"Negative altitude :{altitude}")
-        logger.error(err)
-        raise err
     a = 1 / (np.exp(altitude / 7500))
     return max(0, min(1, a ** (0.7)))
 
 
-def compute_Sx(alpha):
+@njit(nogil=True, cache=True)
+def compute_sx(alpha):
     """
     update the value of the surface orthogonal to the speed vector
     depending on alpha by projecting the x and z surface.
     S_x = cos(alpha)*S_front + sin(alpha) * S_wings
     """
-    logger.debug(f"alpha:{alpha}")
+    # logger.debug(f"alpha:{alpha}")
     alpha = abs(alpha)
     return cos(alpha) * S_FRONT + sin(alpha) * S_WINGS
 
 
-def compute_Sz(alpha):
+@njit(nogil=True, cache=True)
+def compute_sz(alpha):
     """
     update the value of the surface colinear to the speed vector depending on alpha by projecting the x and z surface.
     S_x = sin(alpha)*S_front + cos(alpha) * S_wings
     !IMPORTANT!
     The min allows the function to be stable, I don't understand why yet.
     """
-    logger.debug(f"alpha:{alpha}")
+    # logger.debug(f"alpha:{alpha}")
     alpha = abs(alpha)
     return (sin(alpha) * S_FRONT) + (cos(alpha) * S_WINGS)
 
 
-def compute_next_position(position, altitude, V_x, V_z):
-    logger.debug(f"position:{position},altitude:{altitude},V_x:{V_x},V_z:{V_z}")
-    if altitude < 0:
-        err = ValueError(f"Negative altitude :{altitude}")
-        logger.error(err)
-        raise err
-
-    position += V_x * DELTA_T
-    altitude += V_z * DELTA_T
+@njit(nogil=True, cache=True)
+def compute_next_position(position, altitude, vx, vz):
+    position += vx * DELTA_T
+    altitude += vz * DELTA_T
     return [position, altitude]
 
 
+@njit(nogil=True, cache=True)
 def compute_next_speed(V_x, V_z, A_x, A_z):
-    logger.debug(f"V_x:{V_x},V_z:{V_z},A_x:{A_x},A_z:{A_z}")
+    # logger.debug(f"V_x:{V_x},V_z:{V_z},A_x:{A_x},A_z:{A_z}")
 
     V_x += A_x * DELTA_T
     V_z += A_z * DELTA_T
     return [V_x, V_z]
 
 
+@njit(nogil=True, cache=True)
+def compute_acceleration(thrust, vx, vz, theta, m, altitude, altitude_factor):
+    """
+    Compute the acceleration for a timestep based on the thrust by using Newton's second law : F = m.a <=> a = F/m with F the resultant of all forces
+    applied on the oject, m its mass and a the acceleration o fthe object.
+    Variables used:
+    - P [Weight] in kg
+    - V in m/s
+    - gamma in rad
+    - alpha in rad
+    - S_x  in m^2
+    - S_y in m^2
+    - C_x (no units)
+    - C_z (no units)
+    On the vertical axis (z):
+    F_z = Lift_z(alpha) * cos(theta) + Thrust * sin(theta) - Drag_z(alpha) * sin(gamma)  - P
+
+    On the horizontal axis(x):
+    F_x = Thrust_x  * cos(theta) - Drag_x(alpha) * cos(gamma) - Lift_x(alpha) * sin(theta)
+    """
+    # Compute the magnitude of the speed vector
+    # logger.debug(f"compute norm V : V_x {V_x}, V_z {V_z}")
+    norm_v = norm(np.array([vx, vz], dtype=np.float64))
+
+    mach = norm_v / 343
+
+    # Compute gamma based on speed
+    gamma = compute_gamma(vz, norm_v)
+    alpha = theta - gamma
+
+    # logger.debug("compute P")
+    # Compute P
+    P = m * g
+    # Compute Drag magnitude
+    # logger.debug("compute drag")
+    sx = compute_sx(alpha)
+    sz = compute_sz(alpha)
+    cx = compute_cx(alpha, mach)
+    cz = compute_cz(alpha, mach)
+
+    if altitude < 122:
+        cz *= 1.5
+        cx += 0.035
+    drag = compute_drag(sx, norm_v, cx, altitude_factor)
+    # Compute lift magnitude
+    lift = compute_drag(sz, norm_v, cz, altitude_factor)
+    # Newton's second law
+    # Z-Axis
+    # Project onto Z-axis
+    cos_theta = cos(theta)
+    sin_theta = sin(theta)
+
+    # logger.debug("compute Z axis projections")
+    lift_drag_thrust = np.array([lift, drag, thrust])
+    F_z = np.sum(lift_drag_thrust * np.array([cos_theta, -sin(gamma), sin_theta])) - P
+    # lift_z = cos_theta * lift
+    # drag_z = -sin(gamma) * drag
+    # thrust_z = sin_theta * thrust
+    # # Compute the sum
+    # F_z = lift_z + drag_z + thrust_z - P
+    # X-Axis
+    # Project on X-axis
+    # logger.debug("compute X axis projections")
+    # lift_x = -sin_theta * lift
+    # drag_x = -abs(cos(gamma) * drag)
+    # thrust_x = cos_theta * thrust
+    # # Compute the sum
+    # F_x = lift_x + drag_x + thrust_x
+    F_x = np.sum(lift_drag_thrust * np.array([-sin_theta, -abs(cos(gamma)), cos_theta]))
+    # Compute Acceleration using a = F/m
+    A = [F_x / m, F_z / m]
+    return np.array(A), lift
+
+
+@njit(nogil=True, cache=True)
+def compute_dyna(thrust, theta, A, V, Pos, m, altitude_factor):
+    """
+    Compute the dynamics : Acceleration, Speed and Position
+    Speed(t+1) = Speed(t) + Acceleration(t) * Delta_t
+    Position(t+1) = Position(t) + Speed(t) * Delta_t
+    """
+    # logger.debug(f"thrust {thrust}")
+    # logger.debug(f"altitude factor")
+    # Update acceleration, speed and position
+    # logger.debug(f"compute acceleration, thrust {thrust}")
+    A, lift = compute_acceleration(
+        thrust,
+        V[0],
+        V[1],
+        theta,
+        m,
+        Pos[1],
+        altitude_factor,
+    )
+    # logger.debug(f"compute next V")
+    # V = compute_next_speed(V[0], V[1], A[0], A[1])
+    V = V + A * DELTA_T
+    # logger.debug(f"compute next Pos")
+    Pos = Pos + (V * DELTA_T)
+    # Pos = compute_next_position(Pos[0], Pos[1], V[0], V[1])
+    crashed = False
+    if Pos[1] < 0:
+        energy = 0.5 * m * V[1] ** 2
+        if energy > CRITICAL_ENERGY:
+            crashed = True
+        Pos[1] = 0
+        V[1] = 0
+        # make the plane bounce when touching the ground
+        A[1] = abs(A[1] * 0.8)
+
+    return A, V, Pos, lift, crashed
+
+
 if __name__ == "__main__":
-    # alpha
+    n_loops = int(1e7)
+
+    # # gamma
+    # start = time.time()
+    # print("compute_gamma")
+    # for i in range(n_loops):
+    #     compute_gamma(1, 2)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_gamma)
+    # start = time.time()
+    # print("compute_gamma numba")
+    # for i in range(n_loops):
+    #     n_f(1, 2)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_gamma C++")
+    # for i in range(n_loops):
+    #     c_compute_gamma(1, 2)
+    # print(time.time() - start)
+
+    # # cx
+    # start = time.time()
+    # print("compute_cx")
+    # for i in range(n_loops):
+    #     compute_Cx(1, 0.7)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_Cx)
+    # start = time.time()
+    # print("compute_Cx numba")
+    # for i in range(n_loops):
+    #     n_f(1, 2)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_cx C++")
+    # for i in range(n_loops):
+    #     c_compute_cx(1, 0.7)
+    # print(time.time() - start)
+
+    # # cz
+    # start = time.time()
+    # print("compute_cz")
+    # for i in range(n_loops):
+    #     compute_cz(1, 0.7)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_cz)
+    # start = time.time()
+    # print("compute_cz numba")
+    # for i in range(n_loops):
+    #     n_f(1, 2)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_cz C++")
+    # for i in range(n_loops):
+    #     c_compute_cz(1, 0.7)
+    # print(time.time() - start)
+
+    # # fuel consumption
+    # start = time.time()
+    # print("compute_fuel_variation")
+    # for i in range(n_loops):
+    #     compute_fuel_variation(1000)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_fuel_variation)
+    # start = time.time()
+    # print("compute_fuel_variation numba")
+    # for i in range(n_loops):
+    #     n_f(1000)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_fuel_variation C++")
+    # for i in range(n_loops):
+    #     c_compute_fuel_variation(1000)
+    # print(time.time() - start)
+
+    # # compute_drag
+    # start = time.time()
+    # print("compute_drag")
+    # for i in range(n_loops):
+    #     compute_drag(100, 250, 0.5, 0.9)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_drag)
+    # start = time.time()
+    # print("compute_drag numba")
+    # for i in range(n_loops):
+    #     n_f(100, 250, 0.5, 0.9)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_drag C++")
+    # for i in range(n_loops):
+    #     c_compute_drag(100, 250, 0.5, 0.9)
+    # print(time.time() - start)
+
+    # # compute_altitude_factor
+    # start = time.time()
+    # print("compute_altitude_factor")
+    # for i in range(n_loops):
+    #     compute_altitude_factor(5000)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_altitude_factor)
+    # start = time.time()
+    # print("compute_altitude_factor numba")
+    # for i in range(n_loops):
+    #     n_f(5000)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_altitude_factor C++")
+    # for i in range(n_loops):
+    #     c_compute_altitude_factor(5000)
+    # print(time.time() - start)
+
+    # # compute_sx
+    # start = time.time()
+    # print("compute_sx")
+    # for i in range(n_loops):
+    #     compute_sx(0.3)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_sx)
+    # start = time.time()
+    # print("compute_sx numba")
+    # for i in range(n_loops):
+    #     n_f(0.3)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_sx C++")
+    # for i in range(n_loops):
+    #     c_compute_sx(0.3)
+    # print(time.time() - start)
+
+    # # compute_sz
+    # start = time.time()
+    # print("compute_sz")
+    # for i in range(n_loops):
+    #     compute_sx(0.3)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_sz)
+    # start = time.time()
+    # print("compute_sz numba")
+    # for i in range(n_loops):
+    #     n_f(0.3)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_sz C++")
+    # for i in range(n_loops):
+    #     c_compute_sz(0.3)
+    # print(time.time() - start)
+
+    # # compute_next_position
+    # start = time.time()
+    # print("compute_next_position")
+    # for i in range(n_loops):
+    #     compute_next_position(0, 0, 10, 15)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_next_position)
+    # start = time.time()
+    # print("compute_next_position numba")
+    # for i in range(n_loops):
+    #     n_f(0, 0, 10, 15)
+    # print(time.time() - start)
+
+    # start = time.time()
+    # print("compute_next_position C++")
+    # for i in range(n_loops):
+    #     compute_next_position(0, 0, 10, 15)
+    # print(time.time() - start)
+
+    # compute_acceleration
     start = time.time()
-    print("compute_alpha")
-    for i in range(100):
-        compute_alpha(1, 2)
-    print(time.time() - start)
-    start = time.time()
-    print("compute_alpha C++")
-    for i in range(100):
-        c_compute_alpha(1, 2)
+    print("compute_next_position")
+    for i in range(n_loops):
+        compute_acceleration(150000.0, 10.0, 0.0, 0.2, 65000.0, 3000.0, 0.9)
     print(time.time() - start)
 
-    # gamma
+    n_f = njit(nogil=True)(compute_acceleration)
     start = time.time()
-    print("compute_gamma")
-    for i in range(100):
-        compute_gamma(1, 2)
-    print(time.time() - start)
-    start = time.time()
-    print("compute_gamma C++")
-    for i in range(100):
-        c_compute_gamma(1, 2)
+    print("compute_next_position numba")
+    for i in range(n_loops):
+        n_f(150000.0, 10.0, 0.0, 0.2, 65000.0, 3000.0, 0.9)
     print(time.time() - start)
 
-    # gamma
-    start = time.time()
-    print("compute_cx")
-    for i in range(100):
-        compute_cx(1, 0.7)
-    print(time.time() - start)
-    start = time.time()
-    print("compute_cx C++")
-    for i in range(100):
-        c_compute_cx(1, 0.7)
-    print(time.time() - start)
+    # compute_dyna
+    # start = time.time()
+    # print("compute_dyna")
+    # for i in range(n_loops):
+    #     compute_dyna(12000, 0.2, [1, 1], [12, 45], [120, 2], 55000, 0.9)
+    # print(time.time() - start)
+
+    # n_f = njit(nogil=True)(compute_dyna)
+    # start = time.time()
+    # print("compute_dyna numba")
+    # for i in range(n_loops):
+    #     n_f(
+    #         12000.0,
+    #         0.2,
+    #         np.array([1.0, 1.0]),
+    #         np.array([12.0, 45.0]),
+    #         np.array([120.0, 2.0]),
+    #         55000.0,
+    #         0.9,
+    #     )
+    # print(time.time() - start)
