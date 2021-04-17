@@ -15,6 +15,7 @@ parser.read(config_path)
 
 DELTA_T = float(parser.get("flight_model", "Timestep_size"))
 TASK = parser.get("task", "TASK")
+print("TASK", TASK)
 wrappable_env = PlaneEnv(task=TASK)
 os.makedirs("videos", exist_ok=True)
 os.makedirs("tensorboard_logs", exist_ok=True)
@@ -34,7 +35,7 @@ if __name__ == "__main__":
     )
 
     # check_env(env)
-    vec_env = make_vec_env(lambda: wrappable_env, n_envs=8)
+    vec_env = make_vec_env(lambda: wrappable_env, n_envs=2)
     LOAD = True & ("ppo_plane_{TASK}.zip" in os.listdir())
     params = {
         "learning_rate": 1e-4,
