@@ -7,16 +7,22 @@ from math import pi, sqrt
 from aerodynamics import (
     compute_gamma,
     compute_Cz,
+    c_compute_cz,
     compute_Cx,
+    c_compute_cx,
     Mach_Cx,
     Mach_Cz,
     compute_fuel_variation,
+    c_compute_fuel_variation,
     compute_drag,
+    c_compute_drag,
     compute_altitude_factor,
     compute_Sx,
     compute_Sz,
     compute_next_position,
+    c_compute_next_position,
     compute_next_speed,
+    c_compute_next_speed,
 )
 from configparser import ConfigParser
 
@@ -66,6 +72,48 @@ class TestAerodynamic(unittest.TestCase):
         self.assertGreaterEqual(compute_Cx(np.radians(-10), 0), 0)
         self.assertGreaterEqual(compute_Cx(np.radians(10), 0), 0)
 
+    def test_c_compute_cx(self):
+        # Check that c++ and python version give the same results
+        self.assertAlmostEqual(
+            compute_Cx(np.radians(0), 0), c_compute_cx(np.radians(0), 0)
+        )
+        self.assertAlmostEqual(
+            compute_Cx(np.radians(1), 0), c_compute_cx(np.radians(1), 0)
+        )
+        self.assertAlmostEqual(
+            compute_Cx(np.radians(1), 0.5), c_compute_cx(np.radians(1), 0.5)
+        )
+        self.assertAlmostEqual(
+            compute_Cx(np.radians(1), 0.77), c_compute_cx(np.radians(1), 0.77)
+        )
+        self.assertAlmostEqual(
+            compute_Cx(np.radians(1), 0.79), c_compute_cx(np.radians(1), 0.79)
+        )
+
+    def test_c_compute_cz(self):
+        # Check that c++ and python version give the same results
+        self.assertAlmostEqual(
+            compute_Cz(np.radians(0), 0), c_compute_cz(np.radians(0), 0)
+        )
+        self.assertAlmostEqual(
+            compute_Cz(np.radians(1), 0), c_compute_cz(np.radians(1), 0)
+        )
+        self.assertAlmostEqual(
+            compute_Cz(np.radians(1), 0.5), c_compute_cz(np.radians(1), 0.5)
+        )
+        self.assertAlmostEqual(
+            compute_Cz(np.radians(1), 0.77), c_compute_cz(np.radians(1), 0.77)
+        )
+        self.assertAlmostEqual(
+            compute_Cz(np.radians(1), 0.79), c_compute_cz(np.radians(1), 0.79)
+        )
+
+    def test_c_compute_fuel_variation(self):
+        # Check that c++ and python version give the same results
+        self.assertAlmostEqual(
+            compute_fuel_variation(1e4), c_compute_fuel_variation(1e4)
+        )
+
     def test_mach_cx(self):
         # Check supersonic speed
         self.assertRaises(ValueError, Mach_Cx, 1, 2)
@@ -100,6 +148,13 @@ class TestAerodynamic(unittest.TestCase):
         # Check drag for positive speed and negative C is lesser than 0
         self.assertLess(compute_drag(1, 1, -1, 1), 0)
 
+    def test_c_compute_drag(self):
+        # Check drag for nul speed is null
+        self.assertAlmostEqual(compute_drag(1, 0, 1, 1), c_compute_drag(1, 0, 1, 1))
+        self.assertAlmostEqual(
+            compute_drag(120, 250, 0.5, 1), c_compute_drag(120, 250, 0.5, 1)
+        )
+
     def test_compute_altitude_factor(self):
         # Check error for negative altitude
         self.assertRaises(ValueError, compute_altitude_factor, -1)
@@ -122,6 +177,32 @@ class TestAerodynamic(unittest.TestCase):
         # Check for change when speed is not null
         self.assertNotEqual(compute_next_position(0, 0, 1, 0), [0, 0])
         self.assertNotEqual(compute_next_position(0, 0, 0, 1), [0, 0])
+
+    def test_C_compute_next_position(self):
+        # Check no change when speed is null
+        self.assertAlmostEqual(
+            compute_next_position(0, 0, 0, 0), c_compute_next_position(0, 0, 0, 0)
+        )
+        self.assertAlmostEqual(
+            compute_next_position(0, 0, 15, 23), c_compute_next_position(0, 0, 15, 23)
+        )
+        self.assertAlmostEqual(
+            compute_next_position(157, 2200, -15, 78),
+            c_compute_next_position(157, 2200, -15, 78),
+        )
+
+    def test_C_compute_next_speed(self):
+        # Check no change when speed is null
+        self.assertAlmostEqual(
+            compute_next_speed(0, 0, 0, 0), c_compute_next_speed(0, 0, 0, 0)
+        )
+        self.assertAlmostEqual(
+            compute_next_speed(0, 0, 15, 23), c_compute_next_speed(0, 0, 15, 23)
+        )
+        self.assertAlmostEqual(
+            compute_next_speed(157, 2200, -15, 78),
+            c_compute_next_speed(157, 2200, -15, 78),
+        )
 
     def test_compute_next_speed(self):
         # Check no change when A is null

@@ -43,7 +43,7 @@ logger = setup_logger(
 )
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_gamma(vz, norm_V):
     """
     Compute gamma (the angle between ground and the speed vector) using trigonometry.
@@ -56,7 +56,7 @@ def compute_gamma(vz, norm_V):
         return 0
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_cx(alpha, mach):
     """
     Compute the drag coefficient at M = 0 depending on alpha
@@ -71,7 +71,7 @@ def compute_cx(alpha, mach):
         return cx * 15 * (mach - MACH_CRITIC) + (cx / np.sqrt(1 - (mach ** 2)))
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_cz(alpha, mach):
     """
     Compute the lift coefficient at M=0 depending on alpha
@@ -113,7 +113,7 @@ def compute_cz(alpha, mach):
         return sign * max(maximal - 0.8 * (mach - md), cz_min)
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_fuel_variation(thrust):
     """
     Compute the fuel mass variation at each timestep based on the thrust.
@@ -122,7 +122,7 @@ def compute_fuel_variation(thrust):
     return SFC * DELTA_T * thrust / 1000
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_drag(S, V, C, altitude_factor):
     """
     Compute the drag using:
@@ -135,7 +135,7 @@ def compute_drag(S, V, C, altitude_factor):
     return 0.5 * RHO * altitude_factor * S * C * np.power(V, 2)
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_altitude_factor(altitude):
     """
     Compute the reducting in reactor's power with rising altitude.
@@ -144,7 +144,7 @@ def compute_altitude_factor(altitude):
     return max(0, min(1, a ** (0.7)))
 
 
-@njit(nogil=True, cache=True)
+# @njit(nogil=True, cache=True)
 def compute_sx(alpha):
     """
     update the value of the surface orthogonal to the speed vector
@@ -156,7 +156,7 @@ def compute_sx(alpha):
     return cos(alpha) * S_FRONT + sin(alpha) * S_WINGS
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_sz(alpha):
     """
     update the value of the surface colinear to the speed vector depending on alpha by projecting the x and z surface.
@@ -169,23 +169,22 @@ def compute_sz(alpha):
     return (sin(alpha) * S_FRONT) + (cos(alpha) * S_WINGS)
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def next_speed_and_pos(A, V, Pos):
     V = V + A * DELTA_T
     Pos = Pos + V * DELTA_T
     return Pos, V
 
 
-@njit(nogil=True, fastmath=True)
+# @njit(nogil=True, fastmath=True)
 def norm(l):
-    return np.linalg.norm(l)
-    # s = 0.0
-    # for i in range(l.shape[0]):
-    #     s += l[i] ** 2
-    # return np.sqrt(s)
+    s = 0.0
+    for i in range(l.shape[0]):
+        s += l[i] ** 2
+    return np.sqrt(s)
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def compute_mach(V):
     norm_v = norm(np.array([V[0], V[1]], dtype=np.float64))
     return norm_v / 343, norm_v
@@ -278,7 +277,7 @@ def compute_dyna(thrust, theta, A, V, Pos, m, altitude_factor):
     return A, V, Pos, lift, crashed, times
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def crash(Pos, m, V, A):
     crashed = False
     if Pos[1] < 0:
@@ -291,7 +290,7 @@ def crash(Pos, m, V, A):
     return Pos, V, A, crashed
 
 
-@njit(nogil=True)
+# @njit(nogil=True, cache=True)
 def newton(theta, gamma, thrust, lift, drag, P, m):
     cos_theta = cos(theta)
     sin_theta = sin(theta)
@@ -305,7 +304,7 @@ def newton(theta, gamma, thrust, lift, drag, P, m):
 
 
 if __name__ == "__main__":
-    n_loops = int(1e1)
+    n_loops = int(1e7)
 
     # # gamma
     # start = time.time()
