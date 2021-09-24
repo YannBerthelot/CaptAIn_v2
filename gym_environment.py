@@ -9,7 +9,6 @@ from converter import converter
 import matplotlib.pyplot as plt
 from numpy.linalg import norm
 from configparser import ConfigParser
-from render import render
 
 parser = ConfigParser()
 thisfolder = os.path.dirname(os.path.abspath(__file__))
@@ -101,72 +100,85 @@ class PlaneEnv(gym.Env):
         return reward
 
     def step(self, action):
-        step_start = time.time()
+        step_start = time.process_time()
         action_dict = {"theta": action[0], "thrust": action[1]}
 
         # env step
-        env_step_start = time.time()
+        env_step_start = time.process_time()
         obs = self.FlightModel.action_to_next_state_continuous(action_dict)
-        self.env_step_time += time.time() - env_step_start
+        self.env_step_time += time.process_time() - env_step_start
 
         # terminal
-        terminal_start = time.time()
-        done = self.terminal()
-        self.terminal_time += time.time() - terminal_start
+        terminal_start = time.process_time()
+        done = bool(self.terminal())
+        self.terminal_time += time.process_time() - terminal_start
 
         # reward
-        reward_start = time.time()
+        reward_start = time.process_time()
         reward = self.compute_reward(obs)
-        self.reward_time += time.time() - reward_start
+        self.reward_time += time.process_time() - reward_start
         self.n_steps += 1
         if done:
             self.episode += 1
-        self.step_time += time.time() - step_start
+        self.step_time += time.process_time() - step_start
         return np.array(obs), reward, done, {}
 
-    def reset(self):
-        print(self.episode)
-        # self.time_list.append(
-        #     [
-        #         self.step_time,
-        #         self.env_step_time,
-        #         self.terminal_time,
-        #         self.reward_time,
-        #         self.n_steps,
+    def time_perf(self):
+        # print(self.episode)
+        self.time_list.append(
+            [
+                self.step_time,
+                self.env_step_time,
+                self.terminal_time,
+                self.reward_time,
+                self.n_steps,
+            ]
+        )
+        self.time_list_env.append(
+            [
+                self.FlightModel.get_obs_time,
+                self.FlightModel.init_state_time,
+                self.FlightModel.action_to_next_state_continuous_time,
+            ]
+        )
+        self.time_list_ats.append(
+            [
+                self.FlightModel.compute_altitude_factor_time,
+                self.FlightModel.compute_dyna_time,
+                self.FlightModel.compute_fuel_time,
+                self.FlightModel.compute_mach_time,
+                self.FlightModel.clip_theta_time,
+                self.FlightModel.clip_thrust_time,
+                self.FlightModel.new_theta_time,
+                self.FlightModel.new_thrust_time,
+                self.FlightModel.get_obs_time,
+            ]
+        )
+        self.time_list_dyna.append(self.FlightModel.dyna_times)
+        if self.episode == 1024:
 
-        #     ]
-        # self.time_list_env.append(
-        #     [
-        #         self.FlightModel.get_obs_time,
-        #         self.FlightModel.init_state_time,
-        #         self.FlightModel.action_to_next_state_continuous_time,
-        #     ]
-        # )
-        # self.time_list_ats.append(
-        #     [
-        #         self.FlightModel.compute_altitude_factor_time,
-        #         self.FlightModel.compute_dyna_time,
-        #         self.FlightModel.compute_fuel_time,
-        #         self.FlightModel.compute_mach_time,
-        #         self.FlightModel.clip_theta_time,
-        #         self.FlightModel.clip_thrust_time,
-        #         self.FlightModel.new_theta_time,
-        #         self.FlightModel.new_thrust_time,
-        #         self.FlightModel.get_obs_time,
-        #     ]
-        # )
-        # self.time_list_dyna.append(self.FlightModel.dyna_times)
-        # if self.episode == 100:
-        #     pd.DataFrame(
-        #         np.array(self.time_list_env),
-        #         columns=[
-        #             "obs time",
-        #             "init_state  time",
-        #             "action_to_next_state_continuous time",
-        #         ],
-        #     ).to_csv("time_env.csv", index=False)
-        self.time_list_dyna.append(self.FlightModel.dyna_times.tolist())
-        if self.episode == 100:
+            pd.DataFrame(
+                np.array(self.time_list_ats),
+                columns=[
+                    "compute_altitude_factor_time",
+                    "compute_dyna_time",
+                    "compute_fuel_time",
+                    "compute_mach_time",
+                    "clip_theta_time",
+                    "clip_thrust_time",
+                    "new_theta_time",
+                    "new_thrust_time",
+                    "get_obs_time",
+                ],
+            ).to_csv("time_ats_numba.csv", index=False)
+            pd.DataFrame(
+                np.array(self.time_list_env),
+                columns=[
+                    "obs time",
+                    "init_state  time",
+                    "action_to_next_state_continuous time",
+                ],
+            ).to_csv("time_env_numba.csv", index=False)
             pd.DataFrame(
                 self.time_list_dyna,
                 columns=[
@@ -185,30 +197,16 @@ class PlaneEnv(gym.Env):
                     "crashed_time",
                 ],
             ).to_csv("time_dyna_numba.csv", index=False)
-            # pd.DataFrame(
-            #     np.array(self.time_list_ats),
-            #     columns=[
-            #         "compute_altitude_factor_time",
-            #         "compute_dyna_time",
-            #         "compute_fuel_time",
-            #         "compute_mach_time",
-            #         "clip_theta_time",
-            #         "clip_thrust_time",
-            #         "new_theta_time",
-            #         "new_thrust_time",
-            #         "get_obs_time",
-            #     ],
-            # ).to_csv("time_ats.csv", index=False)
-            # pd.DataFrame(
-            #     np.array(self.time_list),
-            #     columns=[
-            #         "step time",
-            #         "env step time",
-            #         "terminal time",
-            #         "reward time",
-            #         "n_steps",
-            #     ],
-            # ).to_csv("time_speed.csv", index=False)
+            pd.DataFrame(
+                np.array(self.time_list),
+                columns=[
+                    "step time",
+                    "env step time",
+                    "terminal time",
+                    "reward time",
+                    "n_steps",
+                ],
+            ).to_csv("time_numba.csv", index=False)
 
         # measure performance
         self.step_time = 0
@@ -220,6 +218,18 @@ class PlaneEnv(gym.Env):
         self.FlightModel.init_state_time = 0
         self.FlightModel.action_to_next_state_continuous_time = 0
         self.FlightModel.dyna_times = np.zeros(13)
+        self.FlightModel.compute_altitude_factor_time = 0
+        self.FlightModel.compute_dyna_time = 0
+        self.FlightModel.compute_fuel_time = 0
+        self.FlightModel.compute_mach_time = 0
+        self.FlightModel.clip_theta_time = 0
+        self.FlightModel.clip_thrust_time = 0
+        self.FlightModel.new_theta_time = 0
+        self.FlightModel.new_thrust_time = 0
+        self.FlightModel.get_obs_time = 0
+
+    def reset(self):
+        self.time_perf()
 
         # objective reset
         self.take_off = False
@@ -232,7 +242,67 @@ class PlaneEnv(gym.Env):
         return np.array(self.FlightModel.obs)
 
     def render(self, mode="human"):
-        self.viewer = render(self.task, self.viewer, self.FlightModel)
+        print("safe")
+        screen_width = 1800
+        screen_height = 1000
+
+        world_width = 500
+        if self.task == "take-off":
+            world_width = 5000
+            world_height = 200
+        else:
+            world_width = 500
+            world_height = LEVEL_TARGET * 1.5
+
+        scale = screen_width / world_width
+        scale_y = screen_height / world_height
+        carty = 100  # TOP OF CART
+
+        cartwidth = 100.0
+        cartheight = 20.0
+
+        if self.viewer is None:
+            from gym.envs.classic_control import rendering
+
+            self.viewer = rendering.Viewer(screen_width, screen_height)
+
+            l, r, t, b = (
+                -cartwidth / 2,
+                cartwidth / 2,
+                cartheight / 2,
+                -cartheight / 2,
+            )
+
+            axleoffset = cartheight / 4.0
+            # cart = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+            cart = rendering.Image("A320_R.png", 300, 100)
+            # cart = rendering.Image()
+
+            self.carttrans = rendering.Transform()
+            cart.add_attr(self.carttrans)
+            self.viewer.add_geom(cart)
+            if self.task == "take-off":
+                self.track = rendering.Line((0, carty), (screen_width, carty))
+            else:
+                self.track = rendering.Line(
+                    (0, LEVEL_TARGET * scale_y + cartheight * 1.1 + (100 - cartheight)),
+                    (
+                        screen_width,
+                        LEVEL_TARGET * scale_y + cartheight * 1.1 + (100 - cartheight),
+                    ),
+                )
+            self.track.set_color(0, 0, 0)
+            self.viewer.add_geom(self.track)
+            self.transform = rendering.Transform()
+        if self.task == "take-off":
+            x = FlightModel.Pos[0]
+        else:
+            x = 250
+        y = self.FlightModel.Pos[1]
+        cartx = x * scale + cartwidth * 1.1  # MIDDLE OF CART
+        carty = y * scale_y + cartheight * 1.1 + (100 - cartheight)  # MIDDLE OF CART
+        self.carttrans.set_translation(cartx, carty)
+        self.carttrans.set_rotation(self.FlightModel.theta)
         return self.viewer.render(return_rgb_array=mode == "rgb_array")
 
     def close(self):

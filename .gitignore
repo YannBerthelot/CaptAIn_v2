@@ -8,5 +8,9 @@ poetry.lock
 logs/
 tensorboard_logs/
 *.txt
+*.csv
+*.so
+*.cpp
+*.dSYM/
 .vscode/
 render_gym.py

@@ -23,7 +23,7 @@ C_X_MIN = float(parser.get("flight_model", "C_x_min"))
 C_Z_MAX = float(parser.get("flight_model", "C_z_max"))
 S_WINGS = float(parser.get("flight_model", "Surface_wings"))
 S_FRONT = float(parser.get("flight_model", "Surface_front"))
-g = 9.81
+g = float(parser.get("flight_model", "g"))
 TASK = parser.get("flight_model", "Task")
 CRITICAL_ENERGY = float(parser.get("flight_model", "Critical_energy"))
 DEBUG = bool(parser.get("debug", "debug"))
@@ -198,68 +198,68 @@ def compute_dyna(thrust, theta, A, V, Pos, m, altitude_factor):
     Position(t+1) = Position(t) + Speed(t) * Delta_t
     """
     times = []
-    start_time = time.time()
+    start_time = time.process_time()
     # Compute the magnitude of the speed vector
-    start_mach = time.time()
+    start_mach = time.process_time()
     mach, norm_v = compute_mach(V)
-    mach_time = time.time() - start_mach
+    mach_time = time.process_time() - start_mach
 
-    start_gamma = time.time()
+    start_gamma = time.process_time()
     # Compute gamma based on speed
     gamma = compute_gamma(V[1], norm_v)
     alpha = theta - gamma
-    gamma_time = time.time() - start_gamma
+    gamma_time = time.process_time() - start_gamma
 
-    start_P = time.time()
+    start_P = time.process_time()
     # Compute P
     P = m * g
-    P_time = time.time() - start_P
+    P_time = time.process_time() - start_P
 
     # cmpute surfaces and coefficients for drag
-    start_sx = time.time()
+    start_sx = time.process_time()
     sx = compute_sx(alpha)
-    sx_time = time.time() - start_sx
+    sx_time = time.process_time() - start_sx
 
-    start_sz = time.time()
+    start_sz = time.process_time()
     sz = compute_sz(alpha)
-    sz_time = time.time() - start_sz
+    sz_time = time.process_time() - start_sz
 
-    start_cx = time.time()
+    start_cx = time.process_time()
     cx = compute_cx(alpha, mach)
-    cx_time = time.time() - start_cx
+    cx_time = time.process_time() - start_cx
 
-    start_cz = time.time()
+    start_cz = time.process_time()
     cz = compute_cz(alpha, mach)
-    cz_time = time.time() - start_cz
+    cz_time = time.process_time() - start_cz
 
     # simulate flaps
-    start_flaps = time.time()
+    start_flaps = time.process_time()
     if Pos[1] < 122:
         cz *= 1.5
         cx *= 1.5
-    flaps_time = time.time() - start_flaps
+    flaps_time = time.process_time() - start_flaps
 
     # Compute Drag and lift magnitude
-    start_drag = time.time()
+    start_drag = time.process_time()
     drag = compute_drag(sx, norm_v, cx, altitude_factor)
     lift = compute_drag(sz, norm_v, cz, altitude_factor)
-    drag_time = time.time() - start_drag
+    drag_time = time.process_time() - start_drag
 
     # Newton's second law
-    start_newton = time.time()
+    start_newton = time.process_time()
     A = newton(theta, gamma, thrust, lift, drag, P, m)
-    newton_time = time.time() - start_newton
+    newton_time = time.process_time() - start_newton
 
     # compute the new speed and pos
-    start_new_pos_V = time.time()
+    start_new_pos_V = time.process_time()
     Pos, V = next_speed_and_pos(A, V, Pos)
-    new_pos_V_time = time.time() - start_new_pos_V
+    new_pos_V_time = time.process_time() - start_new_pos_V
 
-    start_crashed = time.time()
+    start_crashed = time.process_time()
     Pos, V, A, crashed = crash(Pos, m, V, A)
-    crashed_time = time.time() - start_crashed
+    crashed_time = time.process_time() - start_crashed
 
-    total_time = time.time() - start_time
+    total_time = time.process_time() - start_time
     times = [
         total_time,
         mach_time,
@@ -308,208 +308,208 @@ if __name__ == "__main__":
     n_loops = int(1e1)
 
     # # gamma
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_gamma")
     # for i in range(n_loops):
     #     compute_gamma(1, 2)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_gamma)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_gamma numba")
     # for i in range(n_loops):
     #     n_f(1, 2)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_gamma C++")
     # for i in range(n_loops):
     #     c_compute_gamma(1, 2)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # cx
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_cx")
     # for i in range(n_loops):
     #     compute_Cx(1, 0.7)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_Cx)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_Cx numba")
     # for i in range(n_loops):
     #     n_f(1, 2)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_cx C++")
     # for i in range(n_loops):
     #     c_compute_cx(1, 0.7)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # cz
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_cz")
     # for i in range(n_loops):
     #     compute_cz(1, 0.7)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_cz)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_cz numba")
     # for i in range(n_loops):
     #     n_f(1, 2)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_cz C++")
     # for i in range(n_loops):
     #     c_compute_cz(1, 0.7)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # fuel consumption
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_fuel_variation")
     # for i in range(n_loops):
     #     compute_fuel_variation(1000)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_fuel_variation)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_fuel_variation numba")
     # for i in range(n_loops):
     #     n_f(1000)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_fuel_variation C++")
     # for i in range(n_loops):
     #     c_compute_fuel_variation(1000)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # compute_drag
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_drag")
     # for i in range(n_loops):
     #     compute_drag(100, 250, 0.5, 0.9)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_drag)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_drag numba")
     # for i in range(n_loops):
     #     n_f(100, 250, 0.5, 0.9)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_drag C++")
     # for i in range(n_loops):
     #     c_compute_drag(100, 250, 0.5, 0.9)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # compute_altitude_factor
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_altitude_factor")
     # for i in range(n_loops):
     #     compute_altitude_factor(5000)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_altitude_factor)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_altitude_factor numba")
     # for i in range(n_loops):
     #     n_f(5000)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_altitude_factor C++")
     # for i in range(n_loops):
     #     c_compute_altitude_factor(5000)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # compute_sx
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_sx")
     # for i in range(n_loops):
     #     compute_sx(0.3)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_sx)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_sx numba")
     # for i in range(n_loops):
     #     n_f(0.3)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_sx C++")
     # for i in range(n_loops):
     #     c_compute_sx(0.3)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # compute_sz
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_sz")
     # for i in range(n_loops):
     #     compute_sx(0.3)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_sz)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_sz numba")
     # for i in range(n_loops):
     #     n_f(0.3)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_sz C++")
     # for i in range(n_loops):
     #     c_compute_sz(0.3)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # # compute_next_position
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_next_position")
     # for i in range(n_loops):
     #     compute_next_position(0, 0, 10, 15)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_next_position)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_next_position numba")
     # for i in range(n_loops):
     #     n_f(0, 0, 10, 15)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_next_position C++")
     # for i in range(n_loops):
     #     compute_next_position(0, 0, 10, 15)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # compute_acceleration
-    start = time.time()
+    start = time.process_time()
     print("compute_next_position")
     for i in range(n_loops):
         compute_acceleration(150000.0, 10.0, 0.0, 0.2, 65000.0, 3000.0, 0.9)
-    print(time.time() - start)
+    print(time.process_time() - start)
 
     n_f = njit(nogil=True)(compute_acceleration)
-    start = time.time()
+    start = time.process_time()
     print("compute_next_position numba")
     for i in range(n_loops):
         n_f(150000.0, 10.0, 0.0, 0.2, 65000.0, 3000.0, 0.9)
-    print(time.time() - start)
+    print(time.process_time() - start)
 
     # compute_dyna
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_dyna")
     # for i in range(n_loops):
     #     compute_dyna(12000, 0.2, [1, 1], [12, 45], [120, 2], 55000, 0.9)
-    # print(time.time() - start)
+    # print(time.process_time() - start)
 
     # n_f = njit(nogil=True)(compute_dyna)
-    # start = time.time()
+    # start = time.process_time()
     # print("compute_dyna numba")
     # for i in range(n_loops):
     #     n_f(
@@ -521,4 +521,4 @@ if __name__ == "__main__":
     #         55000.0,
     #         0.9,
     #     )
-    # print(time.time() - start)
+    # print(time.process_time() - start)

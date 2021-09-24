@@ -1,12 +1,16 @@
+import os
+from configparser import ConfigParser
+from converter import converter
 import pyglet
 
-def render(task, viewer, FlightModel):
-    class DrawText:
-        def __init__(self, label: pyglet.text.Label):
-            self.label = label
+parser = ConfigParser()
+thisfolder = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(thisfolder, "config.ini")
+parser.read(config_path)
+LEVEL_TARGET = converter(eval(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 
-        def render(self):
-            self.label.draw()
+
+def render_plane(self):
 
     screen_width = 1800
     screen_height = 1000
