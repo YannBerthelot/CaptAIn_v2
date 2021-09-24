@@ -176,18 +176,18 @@ def next_speed_and_pos(A, V, Pos):
     return Pos, V
 
 
-@njit(nogil=True, fastmath=True)
-def norm_(l):
-    return np.linalg.norm(l)
-    # s = 0.0
-    # for i in range(l.shape[0]):
-    #     s += l[i] ** 2
-    # return np.sqrt(s)
+# @njit(nogil=True, fastmath=True)
+# def norm_(l):
+#     return np.linalg.norm(l)
+#     # s = 0.0
+#     # for i in range(l.shape[0]):
+#     #     s += l[i] ** 2
+#     # return np.sqrt(s)
 
 
 @njit(nogil=True)
 def compute_mach(V):
-    norm_v = norm_(np.array([V[0], V[1]], dtype=np.float64))
+    norm_v = np.linalg.norm(np.array([V[0], V[1]], dtype=np.float64))
     return norm_v / 343, norm_v
 
 
