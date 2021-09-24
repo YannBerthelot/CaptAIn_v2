@@ -7,11 +7,7 @@ from math import cos, sin, floor
 import numpy as np
 from numpy.linalg import norm
 from converter import converter
-from aerodynamics_slow_2 import (
-    compute_fuel_variation,
-    compute_altitude_factor,
-    compute_dyna,
-)
+
 from utils import setup_logger
 
 
@@ -37,11 +33,31 @@ TASK = parser.get("flight_model", "Task")
 CRITICAL_ENERGY = float(parser.get("flight_model", "Critical_energy"))
 LEVEL_TARGET = converter(float(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 DEBUG = bool(parser.get("debug", "debug"))
+from aerodynamics import (
+    compute_fuel_variation,
+    compute_altitude_factor,
+    compute_dyna,
+)
 
 
 class FlightModel:
-    def __init__(self, task="take-off"):
-
+    def __init__(
+        self,
+        task="take-off",
+        speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"},
+    ):
+        if speeds["aerodynamics"] == "slow":
+            from aerodynamics_slow_2 import (
+                compute_fuel_variation as compute_fuel_variation,
+            )
+            from aerodynamics_slow_2 import (
+                compute_altitude_factor as compute_altitude_factor,
+            )
+            from aerodynamics_slow_2 import compute_dyna as compute_dyna
+        else:
+            from aerodynamics import compute_fuel_variation as compute_fuel_variation
+            from aerodynamics import compute_altitude_factor as compute_altitude_factor
+            from aerodynamics import compute_dyna as compute_dyna
         """
         CONSTANTS
         Constants used throughout the model

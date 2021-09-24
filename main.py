@@ -3,7 +3,7 @@ import time
 from configparser import ConfigParser
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
-from gym_environment_slow import PlaneEnv
+
 from stable_baselines3.common.callbacks import (
     EvalCallback,
     StopTrainingOnRewardThreshold,
@@ -21,9 +21,14 @@ TASK = parser.get("task", "TASK")
 DELTA_T = float(parser.get("flight_model", "Timestep_size"))
 MAX_TIMESTEP = 200 / DELTA_T
 N_EPISODES = float(parser.get("task", "n_episodes"))
-wrappable_env = PlaneEnv(task=TASK)
 
-if __name__ == "__main__":
+
+def test_speed(speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"}):
+    if speeds["gym"] == "slow":
+        from gym_environment_slow import PlaneEnv
+    else:
+        from gym_environment import PlaneEnv
+    wrappable_env = PlaneEnv(task=TASK, speeds=speeds)
     os.makedirs("videos", exist_ok=True)
     os.makedirs("tensorboard_logs", exist_ok=True)
     # for n_envs in [2 ** n for n in range(1, 10)]:
@@ -48,6 +53,15 @@ if __name__ == "__main__":
     learn_time_2 = time.time() - start_learn_2
     print(learn_time, learn_time_2)
     # print(n_envs, learn_time / (N_EPISODES), learn_time_2 / (N_EPISODES))
+
+
+if __name__ == "__main__":
+    fast_slow = ["fast", "slow"]
+    for gym in fast_slow:
+        for env in fast_slow:
+            for aero in fast_slow:
+                print(f"{gym=} {env=} {aero=} ")
+                test_speed(speeds={"gym": gym, "env": env, "aerodynamics": aero})
 
     # model.save(f"ppo_plane_{TASK}")
     # env = Monitor(

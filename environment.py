@@ -44,8 +44,24 @@ clip = lambda x, l, u: l if x < l else u if x > u else x
 
 
 class FlightModel:
-    def __init__(self, task="take-off"):
-
+    def __init__(
+        self,
+        task="take-off",
+        speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"},
+    ):
+        print("ENVIRONMENT NORMAL")
+        if speeds["aerodynamics"] == "slow":
+            from aerodynamics_slow_2 import (
+                compute_fuel_variation as compute_fuel_variation,
+            )
+            from aerodynamics_slow_2 import (
+                compute_altitude_factor as compute_altitude_factor,
+            )
+            from aerodynamics_slow_2 import compute_dyna as compute_dyna
+        else:
+            from aerodynamics import compute_fuel_variation as compute_fuel_variation
+            from aerodynamics import compute_altitude_factor as compute_altitude_factor
+            from aerodynamics import compute_dyna as compute_dyna
         """
         CONSTANTS
         Constants used throughout the model

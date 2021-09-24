@@ -4,7 +4,6 @@ import time
 import pandas as pd
 from gym import spaces
 import numpy as np
-from environment import FlightModel
 from converter import converter
 import matplotlib.pyplot as plt
 from numpy.linalg import norm
@@ -20,19 +19,31 @@ LEVEL_TARGET = converter(eval(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 MAX_TIMESTEP = 200 / DELTA_T
 TAKE_OFF_ALTITUDE = converter(80, "feet", "m")  # 80 feets
 RUNWAY_LENGTH = 5000  # 5000m
+NB_EPISODES_OUTPUT = int(parser.get("test", "nb_episodes_output"))
 
 
 class PlaneEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 60}
     """Custom Environment that follows gym interface"""
 
-    def __init__(self, task="take-off"):
+    def __init__(
+        self,
+        task="take-off",
+        speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"},
+    ):
         super(PlaneEnv, self).__init__()
-
+        if speeds["env"] == "slow":
+            from environment_slow import FlightModel
+        else:
+            from environment import FlightModel
         self.task = task
+        self.folder = (
+            f'time_csv/{speeds["gym"]}_{speeds["env"]}_{speeds["aerodynamics"]}'
+        )
+        os.makedirs(self.folder, exist_ok=True)
 
         # Fetch flight model
-        self.FlightModel = FlightModel(task=self.task)
+        self.FlightModel = FlightModel(task=self.task, speeds=speeds)
 
         # get the size if state vec depending on task
         self.STATES_DIM = len(self.FlightModel.obs)
@@ -155,7 +166,7 @@ class PlaneEnv(gym.Env):
             ]
         )
         self.time_list_dyna.append(self.FlightModel.dyna_times)
-        if self.episode == 1024:
+        if self.episode == NB_EPISODES_OUTPUT:
 
             pd.DataFrame(
                 np.array(self.time_list_ats),
@@ -170,7 +181,7 @@ class PlaneEnv(gym.Env):
                     "new_thrust_time",
                     "get_obs_time",
                 ],
-            ).to_csv("time_ats_numba.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time_ats_numba.csv"), index=False)
             pd.DataFrame(
                 np.array(self.time_list_env),
                 columns=[
@@ -178,7 +189,7 @@ class PlaneEnv(gym.Env):
                     "init_state  time",
                     "action_to_next_state_continuous time",
                 ],
-            ).to_csv("time_env_numba.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time_env_numba.csv"), index=False)
             pd.DataFrame(
                 self.time_list_dyna,
                 columns=[
@@ -196,7 +207,7 @@ class PlaneEnv(gym.Env):
                     "new_pos_V_time",
                     "crashed_time",
                 ],
-            ).to_csv("time_dyna_numba.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time_dyna_numba.csv"), index=False)
             pd.DataFrame(
                 np.array(self.time_list),
                 columns=[
@@ -206,7 +217,7 @@ class PlaneEnv(gym.Env):
                     "reward time",
                     "n_steps",
                 ],
-            ).to_csv("time_numba.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time_numba.csv"), index=False)
 
         # measure performance
         self.step_time = 0

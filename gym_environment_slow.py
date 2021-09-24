@@ -4,7 +4,7 @@ import time
 import pandas as pd
 from gym import spaces
 import numpy as np
-from environment_slow import FlightModel
+
 from converter import converter
 import matplotlib.pyplot as plt
 from numpy.linalg import norm
@@ -20,19 +20,33 @@ LEVEL_TARGET = converter(eval(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 MAX_TIMESTEP = 200 / DELTA_T
 TAKE_OFF_ALTITUDE = converter(80, "feet", "m")  # 80 feets
 RUNWAY_LENGTH = 5000  # 5000m
+SPEED = parser.get("speed", "environment")
+NB_EPISODES_OUTPUT = int(parser.get("test", "nb_episodes_output"))
 
 
 class PlaneEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 60}
     """Custom Environment that follows gym interface"""
 
-    def __init__(self, task="take-off"):
+    def __init__(
+        self,
+        task="take-off",
+        speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"},
+    ):
+        if speeds["env"] == "slow":
+            from environment_slow import FlightModel
+        else:
+            from environment import FlightModel
         super(PlaneEnv, self).__init__()
+        self.folder = (
+            f'time_csv/{speeds["gym"]}_{speeds["env"]}_{speeds["aerodynamics"]}'
+        )
+        os.makedirs(self.folder, exist_ok=True)
 
         self.task = task
 
         # Fetch flight model
-        self.FlightModel = FlightModel(task=self.task)
+        self.FlightModel = FlightModel(task=self.task, speeds=speeds)
 
         # get the size if state vec depending on task
         self.STATES_DIM = len(self.FlightModel.obs)
@@ -104,23 +118,23 @@ class PlaneEnv(gym.Env):
         action_dict = {"theta": action[0], "thrust": action[1]}
 
         # env step
-        # env_step_start = time.process_time()
+        env_step_start = time.process_time()
         obs = self.FlightModel.action_to_next_state_continuous(action_dict)
-        # self.env_step_time += time.process_time() - env_step_start
+        self.env_step_time += time.process_time() - env_step_start
 
         # terminal
-        # terminal_start = time.process_time()
+        terminal_start = time.process_time()
         done = bool(self.terminal())
-        # self.terminal_time += time.process_time() - terminal_start
+        self.terminal_time += time.process_time() - terminal_start
 
         # reward
         reward_start = time.process_time()
         reward = self.compute_reward(obs)
-        # self.reward_time += time.process_time() - reward_start
+        self.reward_time += time.process_time() - reward_start
         self.n_steps += 1
         if done:
             self.episode += 1
-        # self.step_time += time.process_time() - step_start
+        self.step_time += time.process_time() - step_start
         return np.array(obs), reward, done, {}
 
     def time_perf(self):
@@ -155,7 +169,7 @@ class PlaneEnv(gym.Env):
             ]
         )
         self.time_list_dyna.append(self.FlightModel.dyna_times)
-        if self.episode == 1000:
+        if self.episode == NB_EPISODES_OUTPUT:
             pd.DataFrame(
                 np.array(self.time_list_ats),
                 columns=[
@@ -169,7 +183,7 @@ class PlaneEnv(gym.Env):
                     "new_thrust_time",
                     "get_obs_time",
                 ],
-            ).to_csv("time_ats.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time_ats.csv"), index=False)
             pd.DataFrame(
                 np.array(self.time_list_env),
                 columns=[
@@ -177,7 +191,7 @@ class PlaneEnv(gym.Env):
                     "init_state  time",
                     "action_to_next_state_continuous time",
                 ],
-            ).to_csv("time_env.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time_env.csv"), index=False)
             pd.DataFrame(
                 self.time_list_dyna,
                 columns=[
@@ -195,7 +209,7 @@ class PlaneEnv(gym.Env):
                     "new_pos_V_time",
                     "crashed_time",
                 ],
-            ).to_csv("time_dyna.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time_dyna.csv"), index=False)
             pd.DataFrame(
                 np.array(self.time_list),
                 columns=[
@@ -205,7 +219,7 @@ class PlaneEnv(gym.Env):
                     "reward time",
                     "n_steps",
                 ],
-            ).to_csv("time.csv", index=False)
+            ).to_csv(os.path.join(self.folder, "time.csv"), index=False)
 
         # measure performance
         self.step_time = 0
@@ -228,7 +242,7 @@ class PlaneEnv(gym.Env):
         self.FlightModel.get_obs_time = 0
 
     def reset(self):
-        # self.time_perf()
+        self.time_perf()
 
         # objective reset
         self.take_off = False
