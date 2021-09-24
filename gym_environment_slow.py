@@ -114,7 +114,7 @@ class PlaneEnv(gym.Env):
         return reward
 
     def step(self, action):
-        # step_start = time.process_time()
+        step_start = time.process_time()
         action_dict = {"theta": action[0], "thrust": action[1]}
 
         # env step

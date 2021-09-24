@@ -33,11 +33,6 @@ TASK = parser.get("flight_model", "Task")
 CRITICAL_ENERGY = float(parser.get("flight_model", "Critical_energy"))
 LEVEL_TARGET = converter(float(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 DEBUG = bool(parser.get("debug", "debug"))
-from aerodynamics import (
-    compute_fuel_variation,
-    compute_altitude_factor,
-    compute_dyna,
-)
 
 
 class FlightModel:
@@ -48,16 +43,25 @@ class FlightModel:
     ):
         if speeds["aerodynamics"] == "slow":
             from aerodynamics_slow_2 import (
-                compute_fuel_variation as compute_fuel_variation,
+                compute_fuel_variation,
+                compute_altitude_factor,
+                compute_dyna,
             )
-            from aerodynamics_slow_2 import (
-                compute_altitude_factor as compute_altitude_factor,
-            )
-            from aerodynamics_slow_2 import compute_dyna as compute_dyna
+            from numpy.linalg import norm
+
+            self.compute_altitude_factor = compute_altitude_factor
+            self.compute_fuel_variation = compute_fuel_variation
+            self.compute_dyna = compute_dyna
         else:
-            from aerodynamics import compute_fuel_variation as compute_fuel_variation
-            from aerodynamics import compute_altitude_factor as compute_altitude_factor
-            from aerodynamics import compute_dyna as compute_dyna
+            from aerodynamics import (
+                compute_fuel_variation,
+                compute_altitude_factor,
+                compute_dyna,
+            )
+
+            self.compute_altitude_factor = compute_altitude_factor
+            self.compute_fuel_variation = compute_fuel_variation
+            self.compute_dyna = compute_dyna
         """
         CONSTANTS
         Constants used throughout the model
@@ -103,14 +107,14 @@ class FlightModel:
             self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = 0
-            self.m = self.init_mass
+            self.m = self.INIT_MASS
         elif self.task == "level-flight":
             self.initial_altitude = LEVEL_TARGET + np.random.randint(-1000, 1000)
             self.A = [0, 0]  # Acceleration vector
-            self.V = [245, 0]  # Speed Vector
+            self.V = [245.0, 0]  # Speed Vector
             self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
-            self.thrust = THRUST_MAX * 0.7 * compute_altitude_factor(self.Pos[1])
+            self.thrust = THRUST_MAX * 0.7 * self.compute_altitude_factor(self.Pos[1])
         self.Mach = norm(self.V) / 343
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
         self.lift = 0
@@ -150,14 +154,14 @@ class FlightModel:
         Variables : Thrust in N, theta in degrees, number of episodes (no unit)
         This will be used by the RL environment.
         """
-        # start_time = time.process_time()
-        self.altitude_factor = compute_altitude_factor(self.Pos[1])
-        # self.compute_altitude_factor_time += time.process_time() - start_time
+        start_time = time.process_time()
+        self.altitude_factor = self.compute_altitude_factor(self.Pos[1])
+        self.compute_altitude_factor_time += time.process_time() - start_time
 
-        # start_new_theta = time.process_time()
+        start_new_theta = time.process_time()
         # convert the pitch angle to radians
         new_theta = np.radians(action["theta"] * 20)
-        # self.new_theta_time += time.process_time() - start_new_theta
+        self.new_theta_time += time.process_time() - start_new_theta
 
         # Apply the atitude factor to the thrust
         start_new_thrust = time.process_time()
@@ -166,25 +170,32 @@ class FlightModel:
 
         # Compute new thrust and pitch (theta) value based on previous value and agent input
         # thrust
-        # start_clip_thrust = time.process_time()
+        start_clip_thrust = time.process_time()
         delta_thrust = np.clip(
             thrust_modified - self.thrust,
             -0.1 * THRUST_MAX,
             0.1 * THRUST_MAX,
         )
         self.thrust += delta_thrust
-        # self.clip_thrust_time += time.process_time() - start_clip_thrust
+        self.clip_thrust_time += time.process_time() - start_clip_thrust
 
         # theta
-        # start_clip_theta = time.process_time()
+        start_clip_theta = time.process_time()
         delta_theta = np.clip(new_theta - self.theta, np.radians(-1), np.radians(1))
         self.theta += delta_theta
-        # self.clip_theta_time += time.process_time() - start_clip_theta
+        self.clip_theta_time += time.process_time() - start_clip_theta
 
         # Compute the dynamics for the episode
         # compute new A, V, Pos
-        # start_compute_dyna = time.process_time()
-        (self.A, self.V, self.Pos, self.lift, self.crashed, dyna_times,) = compute_dyna(
+        start_compute_dyna = time.process_time()
+        (
+            self.A,
+            self.V,
+            self.Pos,
+            self.lift,
+            self.crashed,
+            dyna_times,
+        ) = self.compute_dyna(
             self.thrust,
             self.theta,
             np.array(self.A),
@@ -194,27 +205,27 @@ class FlightModel:
             self.altitude_factor,
         )
         self.dyna_times += np.array(dyna_times)
-        # self.compute_dyna_time += time.process_time() - start_compute_dyna
+        self.compute_dyna_time += time.process_time() - start_compute_dyna
 
         # compute new mach number
-        # start_compute_mach = time.process_time()
+        start_compute_mach = time.process_time()
         self.Mach = norm(self.V) / 343
-        # self.compute_mach_time += time.process_time() - start_compute_mach
+        self.compute_mach_time += time.process_time() - start_compute_mach
 
         # Fuel
         # Prevent to consume more fuel than there's left
-        # start_compute_fuel = time.process_time()
-        fuel_variation = -min(compute_fuel_variation(self.thrust), self.fuel_mass)
+        start_compute_fuel = time.process_time()
+        fuel_variation = -min(self.compute_fuel_variation(self.thrust), self.fuel_mass)
         self.fuel_mass += fuel_variation
         self.m += fuel_variation
-        # self.compute_fuel_time += time.process_time() - start_compute_fuel
+        self.compute_fuel_time += time.process_time() - start_compute_fuel
 
         # update the observation/state vector
         self.obs = self.get_obs()
 
         # keep track of time
         self.timestep += 1
-        # self.action_to_next_state_continuous_time += time.process_time() - start_time
+        self.action_to_next_state_continuous_time += time.process_time() - start_time
         return self.obs
 
 

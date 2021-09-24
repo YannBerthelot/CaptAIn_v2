@@ -5,15 +5,8 @@ import time
 from configparser import ConfigParser
 from math import cos, sin, floor
 import numpy as np
-
-# from numpy.linalg import norm
+from numpy.linalg import norm
 from converter import converter
-from aerodynamics import (
-    compute_fuel_variation,
-    compute_altitude_factor,
-    compute_dyna,
-    norm,
-)
 from utils import setup_logger
 from numba import njit
 
@@ -49,19 +42,26 @@ class FlightModel:
         task="take-off",
         speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"},
     ):
-        print("ENVIRONMENT NORMAL")
         if speeds["aerodynamics"] == "slow":
             from aerodynamics_slow_2 import (
-                compute_fuel_variation as compute_fuel_variation,
+                compute_fuel_variation,
+                compute_altitude_factor,
+                compute_dyna,
             )
-            from aerodynamics_slow_2 import (
-                compute_altitude_factor as compute_altitude_factor,
-            )
-            from aerodynamics_slow_2 import compute_dyna as compute_dyna
+
+            self.compute_altitude_factor = compute_altitude_factor
+            self.compute_fuel_variation = compute_fuel_variation
+            self.compute_dyna = compute_dyna
         else:
-            from aerodynamics import compute_fuel_variation as compute_fuel_variation
-            from aerodynamics import compute_altitude_factor as compute_altitude_factor
-            from aerodynamics import compute_dyna as compute_dyna
+            from aerodynamics import (
+                compute_fuel_variation,
+                compute_altitude_factor,
+                compute_dyna,
+            )
+
+            self.compute_altitude_factor = compute_altitude_factor
+            self.compute_fuel_variation = compute_fuel_variation
+            self.compute_dyna = compute_dyna
         """
         CONSTANTS
         Constants used throughout the model
@@ -114,7 +114,7 @@ class FlightModel:
             self.V = [245.0, 0]  # Speed Vector
             self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
-            self.thrust = THRUST_MAX * 0.7 * compute_altitude_factor(self.Pos[1])
+            self.thrust = THRUST_MAX * 0.7 * self.compute_altitude_factor(self.Pos[1])
         self.Mach = norm(np.array(self.V)) / 343
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
         self.lift = 0
@@ -155,7 +155,7 @@ class FlightModel:
         This will be used by the RL environment.
         """
         start_time = time.process_time()
-        self.altitude_factor = compute_altitude_factor(self.Pos[1])
+        self.altitude_factor = self.compute_altitude_factor(self.Pos[1])
         self.compute_altitude_factor_time += time.process_time() - start_time
 
         start_new_theta = time.process_time()
@@ -189,7 +189,14 @@ class FlightModel:
 
         # Compute the dynamics for the episode
         # compute new A, V, Pos
-        (self.A, self.V, self.Pos, self.lift, self.crashed, dyna_times,) = compute_dyna(
+        (
+            self.A,
+            self.V,
+            self.Pos,
+            self.lift,
+            self.crashed,
+            dyna_times,
+        ) = self.compute_dyna(
             self.thrust,
             self.theta,
             np.array(self.A),
@@ -209,7 +216,7 @@ class FlightModel:
         # Fuel
         # Prevent to consume more fuel than there's left
         start_compute_fuel = time.process_time()
-        fuel_variation = -min(compute_fuel_variation(self.thrust), self.fuel_mass)
+        fuel_variation = -min(self.compute_fuel_variation(self.thrust), self.fuel_mass)
         self.fuel_mass += fuel_variation
         self.m += fuel_variation
         self.compute_fuel_time += time.process_time() - start_compute_fuel

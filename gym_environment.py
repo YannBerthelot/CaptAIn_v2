@@ -37,9 +37,7 @@ class PlaneEnv(gym.Env):
         else:
             from environment import FlightModel
         self.task = task
-        self.folder = (
-            f'time_csv/{speeds["gym"]}_{speeds["env"]}_{speeds["aerodynamics"]}'
-        )
+        self.folder = f'time_csv/{speeds["env"]}_{speeds["aerodynamics"]}'
         os.makedirs(self.folder, exist_ok=True)
 
         # Fetch flight model
@@ -181,7 +179,7 @@ class PlaneEnv(gym.Env):
                     "new_thrust_time",
                     "get_obs_time",
                 ],
-            ).to_csv(os.path.join(self.folder, "time_ats_numba.csv"), index=False)
+            ).to_csv(os.path.join(self.folder, "time_ats.csv"), index=False)
             pd.DataFrame(
                 np.array(self.time_list_env),
                 columns=[
@@ -189,7 +187,7 @@ class PlaneEnv(gym.Env):
                     "init_state  time",
                     "action_to_next_state_continuous time",
                 ],
-            ).to_csv(os.path.join(self.folder, "time_env_numba.csv"), index=False)
+            ).to_csv(os.path.join(self.folder, "time_env.csv"), index=False)
             pd.DataFrame(
                 self.time_list_dyna,
                 columns=[
@@ -207,7 +205,7 @@ class PlaneEnv(gym.Env):
                     "new_pos_V_time",
                     "crashed_time",
                 ],
-            ).to_csv(os.path.join(self.folder, "time_dyna_numba.csv"), index=False)
+            ).to_csv(os.path.join(self.folder, "time_dyna.csv"), index=False)
             pd.DataFrame(
                 np.array(self.time_list),
                 columns=[
@@ -217,7 +215,7 @@ class PlaneEnv(gym.Env):
                     "reward time",
                     "n_steps",
                 ],
-            ).to_csv(os.path.join(self.folder, "time_numba.csv"), index=False)
+            ).to_csv(os.path.join(self.folder, "time.csv"), index=False)
 
         # measure performance
         self.step_time = 0

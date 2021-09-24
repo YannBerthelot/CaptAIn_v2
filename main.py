@@ -10,6 +10,7 @@ from stable_baselines3.common.callbacks import (
 )
 
 import torch as th
+from gym_environment import PlaneEnv
 
 th.set_num_threads(1)
 parser = ConfigParser()
@@ -23,11 +24,8 @@ MAX_TIMESTEP = 200 / DELTA_T
 N_EPISODES = float(parser.get("task", "n_episodes"))
 
 
-def test_speed(speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"}):
-    if speeds["gym"] == "slow":
-        from gym_environment_slow import PlaneEnv
-    else:
-        from gym_environment import PlaneEnv
+def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}):
+
     wrappable_env = PlaneEnv(task=TASK, speeds=speeds)
     os.makedirs("videos", exist_ok=True)
     os.makedirs("tensorboard_logs", exist_ok=True)
@@ -57,11 +55,12 @@ def test_speed(speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"}):
 
 if __name__ == "__main__":
     fast_slow = ["fast", "slow"]
-    for gym in fast_slow:
-        for env in fast_slow:
-            for aero in fast_slow:
-                print(f"{gym=} {env=} {aero=} ")
-                test_speed(speeds={"gym": gym, "env": env, "aerodynamics": aero})
+    for env in fast_slow:
+        for aero in fast_slow:
+            if (env=="fast") and (aero=="slow"):
+                break
+            print(f"{env=} {aero=} ")
+            test_speed(speeds={"env": env, "aerodynamics": aero})
 
     # model.save(f"ppo_plane_{TASK}")
     # env = Monitor(
