@@ -5,7 +5,6 @@ import time
 from configparser import ConfigParser
 from math import cos, sin, floor
 import numpy as np
-from numpy.linalg import norm
 from converter import converter
 
 from utils import setup_logger
@@ -52,16 +51,19 @@ class FlightModel:
             self.compute_altitude_factor = compute_altitude_factor
             self.compute_fuel_variation = compute_fuel_variation
             self.compute_dyna = compute_dyna
+            self.norm = norm
         else:
             from aerodynamics import (
                 compute_fuel_variation,
                 compute_altitude_factor,
                 compute_dyna,
+                norm_,
             )
 
             self.compute_altitude_factor = compute_altitude_factor
             self.compute_fuel_variation = compute_fuel_variation
             self.compute_dyna = compute_dyna
+            self.norm = norm_
         """
         CONSTANTS
         Constants used throughout the model
@@ -115,7 +117,7 @@ class FlightModel:
             self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = THRUST_MAX * 0.7 * self.compute_altitude_factor(self.Pos[1])
-        self.Mach = norm(self.V) / 343
+        self.Mach = self.norm(self.V) / 343
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
         self.lift = 0
         self.init_state_time += time.process_time() - start_time
@@ -209,7 +211,7 @@ class FlightModel:
 
         # compute new mach number
         start_compute_mach = time.process_time()
-        self.Mach = norm(self.V) / 343
+        self.Mach = self.norm(self.V) / 343
         self.compute_mach_time += time.process_time() - start_compute_mach
 
         # Fuel
