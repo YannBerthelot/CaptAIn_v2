@@ -117,7 +117,7 @@ class FlightModel:
             self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = THRUST_MAX * 0.7 * self.compute_altitude_factor(self.Pos[1])
-        self.Mach = self.norm(self.V) / 343
+        self.Mach = self.norm(np.array(self.V)) / 343.0
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
         self.lift = 0
         self.init_state_time += time.process_time() - start_time
@@ -207,7 +207,7 @@ class FlightModel:
             self.altitude_factor,
         )
         self.dyna_times += np.array(dyna_times)
-        self.compute_dyna_time += time.process_time() - start_compute_dyna
+        self.compute_dyna_time += np.sum(dyna_times[1:])
 
         # compute new mach number
         start_compute_mach = time.process_time()

@@ -22,6 +22,7 @@ TASK = parser.get("task", "TASK")
 DELTA_T = float(parser.get("flight_model", "Timestep_size"))
 MAX_TIMESTEP = 200 / DELTA_T
 N_EPISODES = float(parser.get("task", "n_episodes"))
+N_ENVS = int(parser.get("env", "n_envs"))
 
 
 def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}):
@@ -30,7 +31,7 @@ def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}):
     os.makedirs("videos", exist_ok=True)
     os.makedirs("tensorboard_logs", exist_ok=True)
     # for n_envs in [2 ** n for n in range(1, 10)]:
-    vec_env = make_vec_env(lambda: wrappable_env, n_envs=1)
+    vec_env = make_vec_env(lambda: wrappable_env, n_envs=N_ENVS)
     vec_env_eval = make_vec_env(lambda: wrappable_env, n_envs=1)
     callback_on_best = StopTrainingOnRewardThreshold(reward_threshold=-200, verbose=1)
     eval_callback = EvalCallback(
@@ -57,7 +58,7 @@ if __name__ == "__main__":
     fast_slow = ["fast", "slow"]
     for env in fast_slow:
         for aero in fast_slow:
-            if (env=="fast") and (aero=="slow"):
+            if (env == "fast") and (aero == "slow"):
                 break
             print(f"{env=} {aero=} ")
             test_speed(speeds={"env": env, "aerodynamics": aero})

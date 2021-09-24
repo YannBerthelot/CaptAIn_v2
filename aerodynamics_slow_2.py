@@ -186,7 +186,7 @@ def norm(l):
 
 # @njit(nogil=True, cache=True)
 def compute_mach(V):
-    norm_v = norm(np.array([V[0], V[1]], dtype=np.float64))
+    norm_v = np.linalg.norm(np.array([V[0], V[1]], dtype=np.float64))
     return norm_v / 343, norm_v
 
 

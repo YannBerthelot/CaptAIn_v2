@@ -5,10 +5,9 @@ import time
 from configparser import ConfigParser
 from math import cos, sin, floor
 import numpy as np
-
+from numba import njit
 from converter import converter
 from utils import setup_logger
-from numba import njit
 
 # create and configure parser
 parser = ConfigParser()
@@ -33,7 +32,10 @@ CRITICAL_ENERGY = float(parser.get("flight_model", "Critical_energy"))
 LEVEL_TARGET = converter(float(parser.get("task", "LEVEL_TARGET")), "feet", "m")
 DEBUG = bool(parser.get("debug", "debug"))
 
-clip = lambda x, l, u: l if x < l else u if x > u else x
+
+@njit
+def clip(x, l, u):
+    return l if x < l else u if x > u else x
 
 
 class FlightModel:
@@ -119,7 +121,7 @@ class FlightModel:
             self.Pos = [0, (self.initial_altitude)]  # Position vector
             self.theta = 0  # Angle between the plane's axis and the ground
             self.thrust = THRUST_MAX * 0.7 * self.compute_altitude_factor(self.Pos[1])
-        self.Mach = self.norm(np.array(self.V)) / 343
+        self.Mach = self.norm(np.array(self.V)) / 343.0
         self.thrust_modified = 0  # Thrust after the influence of altitude factor
         self.lift = 0
         self.init_state_time += time.process_time() - start_time
@@ -193,6 +195,7 @@ class FlightModel:
 
         # Compute the dynamics for the episode
         # compute new A, V, Pos
+        start_compute_dyna = time.process_time()
         (
             self.A,
             self.V,
@@ -210,7 +213,7 @@ class FlightModel:
             self.altitude_factor,
         )
         self.dyna_times += np.array(dyna_times)
-        self.compute_dyna_time += dyna_times[0]
+        self.compute_dyna_time += np.sum(dyna_times[1:])
 
         # compute new mach number
         start_compute_mach = time.process_time()

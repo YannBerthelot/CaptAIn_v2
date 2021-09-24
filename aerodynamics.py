@@ -7,7 +7,7 @@ import numpy as np
 import scipy.linalg
 from math import asin, cos, sin, sqrt
 from utils import setup_logger, timing
-from numba import njit, types
+from numba import jit, njit, types
 from numba.extending import overload, register_jitable
 from numba.core.errors import TypingError
 
@@ -31,7 +31,7 @@ g = float(parser.get("flight_model", "g"))
 TASK = parser.get("flight_model", "Task")
 CRITICAL_ENERGY = float(parser.get("flight_model", "Critical_energy"))
 DEBUG = bool(parser.get("debug", "debug"))
-
+CACHE = False
 # create and configure logger
 os.makedirs("logs", exist_ok=True)
 if DEBUG:
@@ -239,15 +239,18 @@ def jit_norm(a, ord=None):
 #     # return np.sqrt(s)
 
 
-# @njit
+@njit(fastmath=True, cache=CACHE)
 def norm_(l):
-    return scipy.linalg.norm(np.array(l, dtype=np.float64), 2)
+    s = 0.0
+    for i in range(l.shape[0]):
+        s += l[i] ** 2
+    return np.sqrt(s)
 
 
 @njit
 def compute_mach(V):
-    norm_v = scipy.linalg.norm(np.array([V[0], V[1]], dtype=np.float64), 2)
-    return norm_v / 343, norm_v
+    norm_v = norm_(np.array([V[0], V[1]], dtype=np.float64))
+    return norm_v / 343.0, norm_v
 
 
 def compute_dyna(thrust, theta, A, V, Pos, m, altitude_factor):
