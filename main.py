@@ -68,6 +68,7 @@ if __name__ == "__main__":
     for n_cpu in range(1, os.cpu_count() + 1):
         print(f"{n_cpu=}")
         l.append(test_speed(n_envs=n_cpu))
+        pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
     pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
     # model.save(f"ppo_plane_{TASK}")
     # env = Monitor(
