@@ -64,12 +64,15 @@ if __name__ == "__main__":
     #             break
     #         print(f"{env=} {aero=} ")
     #         test_speed(speeds={"env": env, "aerodynamics": aero})
-    l = []
-    for n_cpu in range(1, os.cpu_count() + 1):
-        print(f"{n_cpu=}")
-        l.append(test_speed(n_envs=n_cpu))
-        pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
-    pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
+    # l = []
+    # for n_cpu in range(1, os.cpu_count() + 1):
+    #     print(f"{n_cpu=}")
+    #     l.append(test_speed(n_envs=n_cpu))
+    #     pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
+    # pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
+    duration = test_speed(n_envs=4)
+    print(duration)
+
     # model.save(f"ppo_plane_{TASK}")
     # env = Monitor(
     #     wrappable_env,
