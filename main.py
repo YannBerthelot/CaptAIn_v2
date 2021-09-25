@@ -4,7 +4,7 @@ import time
 from configparser import ConfigParser
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
-
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv
 from stable_baselines3.common.callbacks import (
     EvalCallback,
     StopTrainingOnRewardThreshold,
@@ -32,7 +32,9 @@ def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}, n_envs=1):
     os.makedirs("videos", exist_ok=True)
     os.makedirs("tensorboard_logs", exist_ok=True)
     # for n_envs in [2 ** n for n in range(1, 10)]:
-    vec_env = make_vec_env(lambda: wrappable_env, n_envs=n_envs)
+    vec_env = make_vec_env(
+        lambda: wrappable_env, n_envs=n_envs, vec_env_cls=SubprocVecEnv
+    )
     vec_env_eval = make_vec_env(lambda: wrappable_env, n_envs=1)
     callback_on_best = StopTrainingOnRewardThreshold(reward_threshold=-200, verbose=1)
     eval_callback = EvalCallback(
@@ -40,7 +42,7 @@ def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}, n_envs=1):
     )
     # policy_kwargs = dict(activation_fn=th.nn.ReLU, net_arch=[dict(pi=[1], vf=[1])])
     model = PPO(
-        "MlpPolicy", vec_env, verbose=0, batch_size=1024
+        "MlpPolicy", vec_env, verbose=0, batch_size=1024, device="cuda"
     )  # policy_kwargs=policy_kwargs)
 
     n_timesteps = MAX_TIMESTEP * N_EPISODES
@@ -65,13 +67,13 @@ if __name__ == "__main__":
     #         print(f"{env=} {aero=} ")
     #         test_speed(speeds={"env": env, "aerodynamics": aero})
     # l = []
-    # for n_cpu in range(1, os.cpu_count() + 1):
-    #     print(f"{n_cpu=}")
-    #     l.append(test_speed(n_envs=n_cpu))
-    #     pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
-    # pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
-    duration = test_speed(n_envs=4)
-    print(duration)
+    for n_cpu in range(1, os.cpu_count() + 1):
+        print(f"{n_cpu=}")
+        l.append(test_speed(n_envs=n_cpu))
+        pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
+    pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
+    # duration = test_speed(n_envs=8)
+    # print(duration)
 
     # model.save(f"ppo_plane_{TASK}")
     # env = Monitor(
