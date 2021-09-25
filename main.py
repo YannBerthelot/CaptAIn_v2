@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 import time
 from configparser import ConfigParser
 from stable_baselines3 import PPO
@@ -25,13 +26,13 @@ N_EPISODES = float(parser.get("task", "n_episodes"))
 N_ENVS = int(parser.get("env", "n_envs"))
 
 
-def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}):
+def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}, n_envs=1):
 
-    wrappable_env = PlaneEnv(task=TASK, speeds=speeds)
+    wrappable_env = PlaneEnv(task=TASK, speeds=speeds, n_envs=n_envs)
     os.makedirs("videos", exist_ok=True)
     os.makedirs("tensorboard_logs", exist_ok=True)
     # for n_envs in [2 ** n for n in range(1, 10)]:
-    vec_env = make_vec_env(lambda: wrappable_env, n_envs=N_ENVS)
+    vec_env = make_vec_env(lambda: wrappable_env, n_envs=n_envs)
     vec_env_eval = make_vec_env(lambda: wrappable_env, n_envs=1)
     callback_on_best = StopTrainingOnRewardThreshold(reward_threshold=-200, verbose=1)
     eval_callback = EvalCallback(
@@ -51,18 +52,23 @@ def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}):
     learn_time = time.process_time() - start_learn
     learn_time_2 = time.time() - start_learn_2
     print(learn_time, learn_time_2)
+    return learn_time
     # print(n_envs, learn_time / (N_EPISODES), learn_time_2 / (N_EPISODES))
 
 
 if __name__ == "__main__":
-    fast_slow = ["fast", "slow"]
-    for env in fast_slow:
-        for aero in fast_slow:
-            if (env == "fast") and (aero == "slow"):
-                break
-            print(f"{env=} {aero=} ")
-            test_speed(speeds={"env": env, "aerodynamics": aero})
-
+    # fast_slow = ["fast", "slow"]
+    # for env in fast_slow:
+    #     for aero in fast_slow:
+    #         if (env == "fast") and (aero == "slow"):
+    #             break
+    #         print(f"{env=} {aero=} ")
+    #         test_speed(speeds={"env": env, "aerodynamics": aero})
+    l = []
+    for n_cpu in range(1, os.cpu_count() + 1):
+        print(f"{n_cpu=}")
+        l.append(test_speed(n_envs=n_cpu))
+    pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
     # model.save(f"ppo_plane_{TASK}")
     # env = Monitor(
     #     wrappable_env,

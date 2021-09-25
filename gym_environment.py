@@ -30,6 +30,7 @@ class PlaneEnv(gym.Env):
         self,
         task="take-off",
         speeds={"gym": "fast", "env": "fast", "aerodynamics": "fast"},
+        n_envs=1,
     ):
         super(PlaneEnv, self).__init__()
         if speeds["env"] == "slow":
@@ -37,7 +38,7 @@ class PlaneEnv(gym.Env):
         else:
             from environment import FlightModel
         self.task = task
-        self.folder = f'time_csv/{speeds["env"]}_{speeds["aerodynamics"]}'
+        self.folder = f'time_csv/{n_envs}_{speeds["env"]}_{speeds["aerodynamics"]}'
         os.makedirs(self.folder, exist_ok=True)
 
         # Fetch flight model
