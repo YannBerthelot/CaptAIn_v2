@@ -9,7 +9,7 @@ from stable_baselines3.common.callbacks import (
     EvalCallback,
     StopTrainingOnRewardThreshold,
 )
-
+from stable_baselines3.common.env_checker import check_env
 import torch as th
 from gym_environment import PlaneEnv
 
@@ -31,18 +31,29 @@ def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}, n_envs=1):
     wrappable_env = PlaneEnv(task=TASK, speeds=speeds, n_envs=n_envs)
     os.makedirs("videos", exist_ok=True)
     os.makedirs("tensorboard_logs", exist_ok=True)
-    # for n_envs in [2 ** n for n in range(1, 10)]:
-    vec_env = make_vec_env(
-        lambda: wrappable_env, n_envs=n_envs, vec_env_cls=SubprocVecEnv
-    )
-    vec_env_eval = make_vec_env(lambda: wrappable_env, n_envs=1)
-    callback_on_best = StopTrainingOnRewardThreshold(reward_threshold=-200, verbose=1)
-    eval_callback = EvalCallback(
-        vec_env_eval, callback_on_new_best=callback_on_best, verbose=1
-    )
+    if n_envs == 1:
+        vec_env = make_vec_env(lambda: wrappable_env, n_envs=n_envs)
+    else:
+        vec_env = make_vec_env(
+            lambda: wrappable_env,
+            n_envs=n_envs,
+            # vec_env_cls=SubprocVecEnv,
+            vec_env_cls=DummyVecEnv,
+            # vec_env_kwargs=dict(start_method="fork"),
+        )
+    # check_env(wrappable_env)
+    # vec_env_eval = make_vec_env(lambda: wrappable_env, n_envs=1)
+    # callback_on_best = StopTrainingOnRewardThreshold(reward_threshold=-200, verbose=1)
+    # eval_callback = EvalCallback(
+    #     vec_env_eval, callback_on_new_best=callback_on_best, verbose=1
+    # )
     # policy_kwargs = dict(activation_fn=th.nn.ReLU, net_arch=[dict(pi=[1], vf=[1])])
     model = PPO(
-        "MlpPolicy", vec_env, verbose=0, batch_size=1024, device="cuda"
+        "MlpPolicy",
+        vec_env,
+        verbose=0,
+        tensorboard_log="./a2c_cartpole_tensorboard/",
+        batch_size=1024,
     )  # policy_kwargs=policy_kwargs)
 
     n_timesteps = MAX_TIMESTEP * N_EPISODES
@@ -54,6 +65,7 @@ def test_speed(speeds={"env": "fast", "aerodynamics": "fast"}, n_envs=1):
     learn_time = time.process_time() - start_learn
     learn_time_2 = time.time() - start_learn_2
     print(learn_time, learn_time_2)
+    vec_env.close()
     return learn_time
     # print(n_envs, learn_time / (N_EPISODES), learn_time_2 / (N_EPISODES))
 
@@ -67,12 +79,12 @@ if __name__ == "__main__":
     #         print(f"{env=} {aero=} ")
     #         test_speed(speeds={"env": env, "aerodynamics": aero})
     # l = []
-    for n_cpu in range(1, os.cpu_count() + 1):
-        print(f"{n_cpu=}")
-        l.append(test_speed(n_envs=n_cpu))
-        pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
-    pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
-    # duration = test_speed(n_envs=8)
+    # for n_cpu in range(1, (os.cpu_count() * 2) + 1):
+    #     print(f"{n_cpu=}")
+    #     l.append(test_speed(n_envs=n_cpu))
+    #     pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
+    # pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
+    duration = test_speed(n_envs=4, speeds={"env": "fast", "aerodynamics": "fast"})
     # print(duration)
 
     # model.save(f"ppo_plane_{TASK}")

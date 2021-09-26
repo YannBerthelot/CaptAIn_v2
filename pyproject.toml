@@ -6,12 +6,14 @@ authors = ["Yann Berthelot"]
 
 [tool.poetry.dependencies]
 python = "^3.8,<3.10"
-gym = {git = "https://github.com/openai/gym.git"}
-stable-baselines3 = "^1.0"
+gym = "0.19"
+
+
 tensorboard = "^2.4.1"
 moviepy = "^1.0.3"
 numba = "^0.53.1"
 scipy = "^1.7.1"
+stable-baselines3 = {git = "https://github.com/YannBerthelot/stable-baselines3.git"}
 
 [tool.poetry.dev-dependencies]
 black = {version = "^20.8b1", allow-prereleases = true}

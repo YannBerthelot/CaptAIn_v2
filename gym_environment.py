@@ -1,6 +1,7 @@
 import os
 import gym
 import time
+from numpy.core.fromnumeric import shape
 import pandas as pd
 from gym import spaces
 import numpy as np
@@ -52,10 +53,9 @@ class PlaneEnv(gym.Env):
 
         # Define state space
         self.observation_space = spaces.Box(
-            np.float32(np.zeros(self.STATES_DIM)),
-            np.float32(np.ones(self.STATES_DIM)),
-            dtype=np.float32,
+            low=-np.inf, high=np.inf, shape=(self.STATES_DIM,), dtype=np.float32
         )
+        print(self.observation_space)
         self.episode = 0
 
         # objectives init
@@ -131,7 +131,7 @@ class PlaneEnv(gym.Env):
         if done:
             self.episode += 1
         self.step_time += time.process_time() - step_start
-        return np.array(obs), reward, done, {}
+        return np.array(obs, dtype=np.float32), reward, done, {}
 
     def time_perf(self):
         # print(self.episode)
@@ -248,8 +248,7 @@ class PlaneEnv(gym.Env):
 
         # state reset
         self.FlightModel.init_state()
-
-        return np.array(self.FlightModel.obs)
+        return np.array(self.FlightModel.obs, dtype=np.float32)
 
     def render(self, mode="human"):
         print("safe")
