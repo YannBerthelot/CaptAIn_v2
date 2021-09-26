@@ -85,6 +85,8 @@ if __name__ == "__main__":
     #     pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
     # pd.Series(l).to_csv("time_vs_cpu.csv", index=False)
     duration = test_speed(n_envs=4, speeds={"env": "fast", "aerodynamics": "fast"})
+    duration = test_speed(n_envs=8, speeds={"env": "fast", "aerodynamics": "fast"})
+    duration = test_speed(n_envs=16, speeds={"env": "fast", "aerodynamics": "fast"})
     # print(duration)
 
     # model.save(f"ppo_plane_{TASK}")
